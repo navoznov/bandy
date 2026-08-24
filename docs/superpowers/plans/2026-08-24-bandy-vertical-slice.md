@@ -2001,7 +2001,9 @@ export function buildScene(level: Level): SceneBuild {
   scene.background = new THREE.Color(0x0d0d10);
   scene.fog = new THREE.Fog(0x0d0d10, 6, 34);
 
-  scene.add(new THREE.HemisphereLight(0xdfe4ff, 0x30302f, 1.1));
+  // Полусферический свет несёт основную освещённость: у него нет затухания с
+  // расстоянием, поэтому только он способен поднять дальние углы комнаты.
+  scene.add(new THREE.HemisphereLight(0xdfe4ff, 0x30302f, 2.4));
 
   const grid = makeGridTexture();
 
@@ -2024,8 +2026,12 @@ export function buildScene(level: Level): SceneBuild {
     ceiling.position.set(cx, ROOM.height, cz);
     scene.add(ceiling);
 
-    const lamp = new THREE.PointLight(0xfff2dd, room.light * 12, Math.max(width, depth) * 1.6, 2);
-    lamp.position.set(cx, ROOM.height - 0.4, cz);
+    // Точечный источник — акцент, а не основной свет. Затухание квадратичное
+    // (физически корректное с r155), поэтому яркость мала, а лампа отодвинута от
+    // потолка: на 0.4 м освещённость прямо над ней была в 200 раз выше, чем в
+    // дальнем углу, и потолок выжигался в белое пятно.
+    const lamp = new THREE.PointLight(0xfff2dd, room.light * 2, Math.max(width, depth) * 1.6, 2);
+    lamp.position.set(cx, ROOM.height - 0.75, cz);
     scene.add(lamp);
   }
 
@@ -2055,6 +2061,9 @@ const level = loaded.level;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.shadowMap.enabled = false;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Без тонмаппинга всё ярче единицы жёстко срезается в чистый белый, и любой
+// пересвет читается плоским диском вместо мягкого блика.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
 const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 60);
 camera.position.set(level.spawn.x, PLAYER.eyeHeight, level.spawn.z);
@@ -2230,6 +2239,9 @@ const allColliders = buildColliders(level);
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.shadowMap.enabled = false;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Без тонмаппинга всё ярче единицы жёстко срезается в чистый белый, и любой
+// пересвет читается плоским диском вместо мягкого блика.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
 const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 60);
 camera.rotation.order = 'YXZ';
