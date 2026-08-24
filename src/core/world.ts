@@ -1,4 +1,5 @@
 import { heldItem, inventoryItems, itemsInRoom, setHeld, type Locations } from './inventory';
+import { resolveInteraction, type Outcome, type WorldView } from './interactions';
 import type { Effect, ItemLocation, Level } from './types';
 
 export type WorldEvent =
@@ -11,7 +12,7 @@ export type WorldEvent =
   | { kind: 'said'; text: string }
   | { kind: 'won' };
 
-export class World {
+export class World implements WorldView {
   private readonly locations: Locations = new Map();
   private readonly destroyedIds = new Set<string>();
   private readonly openDoorIds = new Set<string>();
@@ -50,6 +51,18 @@ export class World {
   setHeld(item: string | null): void {
     setHeld(this.locations, item);
     this.emit({ kind: 'handChanged', item });
+  }
+
+  /** Что произойдёт, если сейчас нажать «взаимодействовать». Состояние не меняется. */
+  describe(targetId: string): Outcome {
+    return resolveInteraction(this, targetId);
+  }
+
+  /** То же решение, но применённое. */
+  interact(targetId: string): Outcome {
+    const outcome = resolveInteraction(this, targetId);
+    if (outcome.ok) this.applyEffects(outcome.effects);
+    return outcome;
   }
 
   applyEffects(effects: readonly Effect[]): void {
