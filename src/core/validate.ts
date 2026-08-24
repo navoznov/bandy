@@ -15,20 +15,39 @@ function contains(room: RoomDef, x: number, z: number): boolean {
 
 const EPS = 1e-9;
 
-/** Лежит ли точка двери на стене, общей для двух комнат. */
+/**
+ * Лежит ли точка двери на стене, общей для двух комнат.
+ *
+ * Сначала определяется координата, В КОТОРОЙ комнаты соприкасаются, и точка двери
+ * сверяется именно с ней. Проверять принадлежность точки любой из границ комнаты
+ * нельзя: дверь, поставленная на дальнюю внешнюю стену, прошла бы проверку, хотя
+ * второй комнаты там нет и близко.
+ */
 function onSharedWall(a: RoomDef, b: RoomDef, px: number, pz: number): boolean {
   const ba = roomBounds(a);
   const bb = roomBounds(b);
 
-  const touchesOnX = Math.abs(ba.x1 - bb.x0) < EPS || Math.abs(bb.x1 - ba.x0) < EPS;
-  const zOverlap = pz >= Math.max(ba.z0, bb.z0) && pz <= Math.min(ba.z1, bb.z1);
-  const xMatches = Math.abs(px - ba.x1) < EPS || Math.abs(px - ba.x0) < EPS;
-  if (touchesOnX && zOverlap && xMatches) return true;
+  let sharedX: number | null = null;
+  if (Math.abs(ba.x1 - bb.x0) < EPS) sharedX = ba.x1;
+  else if (Math.abs(bb.x1 - ba.x0) < EPS) sharedX = ba.x0;
 
-  const touchesOnZ = Math.abs(ba.z1 - bb.z0) < EPS || Math.abs(bb.z1 - ba.z0) < EPS;
-  const xOverlap = px >= Math.max(ba.x0, bb.x0) && px <= Math.min(ba.x1, bb.x1);
-  const zMatches = Math.abs(pz - ba.z1) < EPS || Math.abs(pz - ba.z0) < EPS;
-  return touchesOnZ && xOverlap && zMatches;
+  if (sharedX !== null && Math.abs(px - sharedX) < EPS) {
+    const from = Math.max(ba.z0, bb.z0);
+    const to = Math.min(ba.z1, bb.z1);
+    if (pz >= from && pz <= to) return true;
+  }
+
+  let sharedZ: number | null = null;
+  if (Math.abs(ba.z1 - bb.z0) < EPS) sharedZ = ba.z1;
+  else if (Math.abs(bb.z1 - ba.z0) < EPS) sharedZ = ba.z0;
+
+  if (sharedZ !== null && Math.abs(pz - sharedZ) < EPS) {
+    const from = Math.max(ba.x0, bb.x0);
+    const to = Math.min(ba.x1, bb.x1);
+    if (px >= from && px <= to) return true;
+  }
+
+  return false;
 }
 
 function overlap(a: RoomDef, b: RoomDef): boolean {

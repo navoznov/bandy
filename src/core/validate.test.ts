@@ -44,6 +44,18 @@ describe('validateLevel', () => {
     expect(errors.join(' ')).toContain('общей стене');
   });
 
+  it('ловит дверь на дальней стене комнаты, которой сосед не касается', () => {
+    const errors = errorsFor((l) => { l.doors[0]!.at = [0, 3]; });
+    expect(errors.join(' ')).toContain('общей стене');
+  });
+
+  it('принимает дверь на горизонтальной общей стене', () => {
+    const lvl = baseLevel();
+    lvl.rooms.push({ id: 'c', rect: [0, 6, 4, 4], color: '#888', light: 1 });
+    lvl.doors.push({ id: 'd_ac', between: ['a', 'c'], at: [2, 6] });
+    expect(validateLevel(lvl, itemDefs).ok).toBe(true);
+  });
+
   it('ловит пересечение комнат', () => {
     const errors = errorsFor((l) => { l.rooms[1]!.rect = [4, 2, 6, 2]; });
     expect(errors.join(' ')).toContain('пересекаются');
