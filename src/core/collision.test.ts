@@ -43,6 +43,15 @@ describe('resolveMove', () => {
     expect(result).toEqual({ x: 4.7, z: 3 });
   });
 
+  it('не запирает игрока, который уже оказался внутри стены', () => {
+    // Штатный сценарий: игрок стоит в проёме и закрывает дверь — коллайдер створки
+    // возвращается уже вокруг него. Выйти он обязан в любую сторону.
+    const out = resolveMove({ x: 5.1, z: 3 }, { x: -1, z: 0 }, R, [wallEast]);
+    expect(out.x).toBeCloseTo(4.1, 6);
+    const through = resolveMove({ x: 5.1, z: 3 }, { x: 1, z: 0 }, R, [wallEast]);
+    expect(through.x).toBeCloseTo(6.1, 6);
+  });
+
   it('пропускает игрока в дверной проём между кусками стены', () => {
     const left: Aabb = { x0: 5, x1: 5.2, z0: 0, z1: 2.5 };
     const right: Aabb = { x0: 5, x1: 5.2, z0: 3.5, z1: 10 };
