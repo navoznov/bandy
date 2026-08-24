@@ -322,6 +322,18 @@ describe('validateLevel', () => {
     expect(errors.join(' ')).toContain('общей стене');
   });
 
+  it('ловит дверь на дальней стене комнаты, которой сосед не касается', () => {
+    const errors = errorsFor((l) => { l.doors[0]!.at = [0, 3]; });
+    expect(errors.join(' ')).toContain('общей стене');
+  });
+
+  it('принимает дверь на горизонтальной общей стене', () => {
+    const lvl = baseLevel();
+    lvl.rooms.push({ id: 'c', rect: [0, 6, 4, 4], color: '#888', light: 1 });
+    lvl.doors.push({ id: 'd_ac', between: ['a', 'c'], at: [2, 6] });
+    expect(validateLevel(lvl, itemDefs).ok).toBe(true);
+  });
+
   it('ловит пересечение комнат', () => {
     const errors = errorsFor((l) => { l.rooms[1]!.rect = [4, 2, 6, 2]; });
     expect(errors.join(' ')).toContain('пересекаются');
@@ -489,20 +501,39 @@ function contains(room: RoomDef, x: number, z: number): boolean {
 
 const EPS = 1e-9;
 
-/** Лежит ли точка двери на стене, общей для двух комнат. */
+/**
+ * Лежит ли точка двери на стене, общей для двух комнат.
+ *
+ * Сначала определяется координата, В КОТОРОЙ комнаты соприкасаются, и точка двери
+ * сверяется именно с ней. Проверять принадлежность точки любой из границ комнаты
+ * нельзя: дверь, поставленная на дальнюю внешнюю стену, прошла бы проверку, хотя
+ * второй комнаты там нет и близко.
+ */
 function onSharedWall(a: RoomDef, b: RoomDef, px: number, pz: number): boolean {
   const ba = roomBounds(a);
   const bb = roomBounds(b);
 
-  const touchesOnX = Math.abs(ba.x1 - bb.x0) < EPS || Math.abs(bb.x1 - ba.x0) < EPS;
-  const zOverlap = pz >= Math.max(ba.z0, bb.z0) && pz <= Math.min(ba.z1, bb.z1);
-  const xMatches = Math.abs(px - ba.x1) < EPS || Math.abs(px - ba.x0) < EPS;
-  if (touchesOnX && zOverlap && xMatches) return true;
+  let sharedX: number | null = null;
+  if (Math.abs(ba.x1 - bb.x0) < EPS) sharedX = ba.x1;
+  else if (Math.abs(bb.x1 - ba.x0) < EPS) sharedX = ba.x0;
 
-  const touchesOnZ = Math.abs(ba.z1 - bb.z0) < EPS || Math.abs(bb.z1 - ba.z0) < EPS;
-  const xOverlap = px >= Math.max(ba.x0, bb.x0) && px <= Math.min(ba.x1, bb.x1);
-  const zMatches = Math.abs(pz - ba.z1) < EPS || Math.abs(pz - ba.z0) < EPS;
-  return touchesOnZ && xOverlap && zMatches;
+  if (sharedX !== null && Math.abs(px - sharedX) < EPS) {
+    const from = Math.max(ba.z0, bb.z0);
+    const to = Math.min(ba.z1, bb.z1);
+    if (pz >= from && pz <= to) return true;
+  }
+
+  let sharedZ: number | null = null;
+  if (Math.abs(ba.z1 - bb.z0) < EPS) sharedZ = ba.z1;
+  else if (Math.abs(bb.z1 - ba.z0) < EPS) sharedZ = ba.z0;
+
+  if (sharedZ !== null && Math.abs(pz - sharedZ) < EPS) {
+    const from = Math.max(ba.x0, bb.x0);
+    const to = Math.min(ba.x1, bb.x1);
+    if (px >= from && px <= to) return true;
+  }
+
+  return false;
 }
 
 function overlap(a: RoomDef, b: RoomDef): boolean {
@@ -664,7 +695,7 @@ export function validateLevel(
 - [ ] **Step 5: Запустить тесты и убедиться, что они проходят**
 
 Run: `npm test src/core/validate.test.ts`
-Expected: PASS, 11 тестов.
+Expected: PASS, 13 тестов.
 
 - [ ] **Step 6: Коммит**
 
