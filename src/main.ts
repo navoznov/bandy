@@ -13,6 +13,9 @@ const level = loaded.level;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.shadowMap.enabled = false;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Без тонмаппинга всё ярче единицы жёстко срезается в чистый белый, и любой
+// пересвет читается плоским диском вместо мягкого блика.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
 const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 60);
 camera.position.set(level.spawn.x, PLAYER.eyeHeight, level.spawn.z);
