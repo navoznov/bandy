@@ -16,9 +16,10 @@ export function buildScene(level: Level): SceneBuild {
   scene.background = new THREE.Color(0x0d0d10);
   scene.fog = new THREE.Fog(0x0d0d10, 6, 34);
 
-  // Полусферический свет несёт основную освещённость: у него нет затухания с
-  // расстоянием, поэтому только он способен поднять дальние углы комнаты.
-  scene.add(new THREE.HemisphereLight(0xdfe4ff, 0x30302f, 2.4));
+  // Полусферический свет смешивает цвет неба и цвет земли по нормали поверхности.
+  // У потолка нормаль смотрит вниз, поэтому его освещает именно цвет земли —
+  // если он почти чёрный, потолок гаснет, каким бы светлым ни был его материал.
+  scene.add(new THREE.HemisphereLight(0xdfe4ff, 0xb0b0b0, 2.6));
 
   const grid = makeGridTexture();
 
