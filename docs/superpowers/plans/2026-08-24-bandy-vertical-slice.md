@@ -96,7 +96,8 @@ npm i -D typescript vite vitest @types/three
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit && vitest run",
     "test:watch": "vitest"
   }
 }
@@ -137,6 +138,11 @@ export default defineConfig({
 ```
 
 `base` критичен: сайт живёт в подпапке репозитория.
+
+`npm test` намеренно начинается с `tsc --noEmit`. `vite build` типы не проверяет — он
+их просто срезает, — поэтому без этого шага `strict` и `noUncheckedIndexedAccess` из
+`tsconfig.json` не поймали бы ничего нигде, кроме редактора. Опечатка в идентификаторе
+предмета — ровно то, ради чего в проекте вообще взят TypeScript.
 
 - [ ] **Step 5: Создать `index.html`**
 
