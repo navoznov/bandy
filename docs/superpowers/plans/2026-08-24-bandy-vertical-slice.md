@@ -978,6 +978,15 @@ describe('resolveMove', () => {
     expect(result).toEqual({ x: 4.7, z: 3 });
   });
 
+  it('не запирает игрока, который уже оказался внутри стены', () => {
+    // Штатный сценарий: игрок стоит в проёме и закрывает дверь — коллайдер створки
+    // возвращается уже вокруг него. Выйти он обязан в любую сторону.
+    const out = resolveMove({ x: 5.1, z: 3 }, { x: -1, z: 0 }, R, [wallEast]);
+    expect(out.x).toBeCloseTo(4.1, 6);
+    const through = resolveMove({ x: 5.1, z: 3 }, { x: 1, z: 0 }, R, [wallEast]);
+    expect(through.x).toBeCloseTo(6.1, 6);
+  });
+
   it('пропускает игрока в дверной проём между кусками стены', () => {
     const left: Aabb = { x0: 5, x1: 5.2, z0: 0, z1: 2.5 };
     const right: Aabb = { x0: 5, x1: 5.2, z0: 3.5, z1: 10 };
@@ -1006,6 +1015,13 @@ export interface Vec2 {
  * Двигает круг радиуса `radius` из `pos` на `delta`, не пуская его в прямоугольники.
  * Оси разрешаются по очереди — благодаря этому игрок скользит вдоль стены,
  * а не залипает при движении по диагонали.
+ *
+ * Инвариант: если стартовая позиция УЖЕ внутри прямоугольника, по этой оси обрезка
+ * не применяется и игрок движется свободно. Это намеренно. Такое положение возникает
+ * штатно: игрок стоит в проёме и закрывает дверь, коллайдер створки возвращается
+ * уже вокруг него. Из этого положения он обязан выйти, а не остаться запертым
+ * навсегда. Обычный кадр всегда стартует из разрешённой на прошлом кадре позиции,
+ * поэтому на нормальный ход движения это не влияет.
  */
 export function resolveMove(
   pos: Vec2,
@@ -1017,35 +1033,39 @@ export function resolveMove(
   let z = pos.z;
 
   if (delta.x !== 0) {
-    x += delta.x;
+    let nextX = x + delta.x;
     for (const b of boxes) {
-      if (!overlaps(x, z, b, radius)) continue;
-      x = delta.x > 0 ? b.x0 - radius : b.x1 + radius;
+      if (z <= b.z0 - radius || z >= b.z1 + radius) continue;
+      if (delta.x > 0 && x <= b.x0 - radius && nextX > b.x0 - radius) {
+        nextX = Math.min(nextX, b.x0 - radius);
+      } else if (delta.x < 0 && x >= b.x1 + radius && nextX < b.x1 + radius) {
+        nextX = Math.max(nextX, b.x1 + radius);
+      }
     }
+    x = nextX;
   }
 
   if (delta.z !== 0) {
-    z += delta.z;
+    let nextZ = z + delta.z;
     for (const b of boxes) {
-      if (!overlaps(x, z, b, radius)) continue;
-      z = delta.z > 0 ? b.z0 - radius : b.z1 + radius;
+      if (x <= b.x0 - radius || x >= b.x1 + radius) continue;
+      if (delta.z > 0 && z <= b.z0 - radius && nextZ > b.z0 - radius) {
+        nextZ = Math.min(nextZ, b.z0 - radius);
+      } else if (delta.z < 0 && z >= b.z1 + radius && nextZ < b.z1 + radius) {
+        nextZ = Math.max(nextZ, b.z1 + radius);
+      }
     }
+    z = nextZ;
   }
 
   return { x, z };
-}
-
-/** Прямоугольник, раздутый на радиус: круг пересекает стену ровно тогда, когда центр внутри. */
-function overlaps(x: number, z: number, b: Aabb, radius: number): boolean {
-  return x > b.x0 - radius && x < b.x1 + radius
-      && z > b.z0 - radius && z < b.z1 + radius;
 }
 ```
 
 - [ ] **Step 4: Запустить тесты и убедиться, что они проходят**
 
 Run: `npm test src/core/collision.test.ts`
-Expected: PASS, 7 тестов.
+Expected: PASS, 8 тестов.
 
 - [ ] **Step 5: Коммит**
 
