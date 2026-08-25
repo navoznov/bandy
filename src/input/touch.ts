@@ -19,6 +19,8 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
     throw new Error('Разметка тач-управления не найдена.');
   }
   panel.hidden = false;
+  // Кнопка рюкзака живёт вне #touch, поэтому показывается отдельно.
+  bagButton.hidden = false;
 
   let stickPointer: number | null = null;
   let stickOrigin = { x: 0, y: 0 };
@@ -62,8 +64,8 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
     }
   });
 
-  // Функциональное выражение, а не объявление: строгий tsc не переносит
-  // сужение null-проверки выше по коду в тело hoisted function declaration.
+  // Стрелка в const, а не объявление функции: TypeScript сбрасывает сужение типа
+  // на поднимаемом объявлении, и `stick`/`knob` снова стали бы возможно-null.
   const release = (event: PointerEvent): void => {
     if (event.pointerId === stickPointer) {
       stickPointer = null;
