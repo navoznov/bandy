@@ -2876,7 +2876,7 @@ git commit -m "Add reticle targeting, prompts, animated doors and locks"
 **Interfaces:**
 - Consumes: `World` из Task 6 и 7, `ItemDef` из Task 2
 - Produces:
-  - `buildItems(level, world): { group: THREE.Group; targets: THREE.Object3D[] }`
+  - `buildItems(level): { group: THREE.Group; targets: THREE.Object3D[] }`
   - `createHand(): { scene: THREE.Scene; camera: THREE.PerspectiveCamera; setItem(id: string | null): void }`
   - `createInventoryUi(world): { isOpen(): boolean; toggle(): void; close(): void }`
 
@@ -2885,40 +2885,35 @@ git commit -m "Add reticle targeting, prompts, animated doors and locks"
 ```ts
 import * as THREE from 'three';
 import type { Level } from '../core/types';
-import type { World } from '../core/world';
 
 const ITEM_MATERIAL = new THREE.MeshStandardMaterial({
   color: 0xd9b64a, roughness: 0.35, metalness: 0.7,
 });
 
-/** Форма предмета в мире. Моделей нет, поэтому все предметы — небольшие бруски. */
-export function itemGeometry(): THREE.BufferGeometry {
-  return new THREE.BoxGeometry(0.09, 0.03, 0.22);
-}
+/**
+ * Форма предмета в мире. Моделей нет, поэтому все предметы — небольшие бруски.
+ * Геометрия общая на все предметы и на руку, поэтому её нельзя освобождать
+ * при исчезновении одного предмета.
+ */
+export const ITEM_GEOMETRY = new THREE.BoxGeometry(0.09, 0.03, 0.22);
 
-export function buildItems(level: Level, world: World): {
+export function buildItems(level: Level): {
   group: THREE.Group;
   targets: THREE.Object3D[];
 } {
   const group = new THREE.Group();
   const targets: THREE.Object3D[] = [];
-  const meshes = new Map<string, THREE.Mesh>();
 
   for (const placement of level.items) {
-    const mesh = new THREE.Mesh(itemGeometry(), ITEM_MATERIAL);
+    const mesh = new THREE.Mesh(ITEM_GEOMETRY, ITEM_MATERIAL);
     mesh.position.set(placement.at[0], placement.at[1], placement.at[2]);
     mesh.userData['targetId'] = placement.def;
     group.add(mesh);
     targets.push(mesh);
-    meshes.set(placement.def, mesh);
   }
 
-  world.on((event) => {
-    if (event.kind === 'itemTaken' || event.kind === 'itemGone') {
-      meshes.get(event.item)?.removeFromParent();
-    }
-  });
-
+  // Убирает подобранный предмет из сцены НЕ этот модуль, а scene.ts: он же ведёт
+  // список целей луча, и снять меш нужно из обоих мест одновременно.
   return { group, targets };
 }
 ```
@@ -2929,7 +2924,7 @@ export function buildItems(level: Level, world: World): {
 
 ```ts
 import * as THREE from 'three';
-import { itemGeometry } from './items';
+import { ITEM_GEOMETRY } from './items';
 
 const HELD_MATERIAL = new THREE.MeshStandardMaterial({
   color: 0xe8c65a, roughness: 0.3, metalness: 0.7,
@@ -2949,7 +2944,7 @@ export function createHand(): Hand {
   const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 2);
   camera.position.set(0, 0, 0);
 
-  const mesh = new THREE.Mesh(itemGeometry(), HELD_MATERIAL);
+  const mesh = new THREE.Mesh(ITEM_GEOMETRY, HELD_MATERIAL);
   mesh.position.set(0.24, -0.19, -0.5);
   mesh.rotation.set(0.2, -0.5, 0.35);
   mesh.visible = false;
@@ -3019,24 +3014,25 @@ export function createInventoryUi(world: World): InventoryUi {
     for (const id of items) {
       const entry = document.createElement('li');
       entry.textContent = world.level.itemDefs[id]?.name ?? id;
-      if (id === held) entry.classList.add('held');
-      entry.addEventListener('click', () => {
-        world.setHeld(held === id ? null : id);
-        render();
-      });
+      // render вручную звать не надо: setHeld эмитит handChanged, а на него
+      // подписан этот же render. Иначе список перерисуется дважды, причём второй
+      // раз — из обработчика на строке, которую первая перерисовка уже выбросила.
+      entry.addEventListener('click', () => world.setHeld(id));
       list!.append(entry);
     }
 
-    // Предмет в руках тоже показывается в списке, поэтому пусто только когда нет ничего.
-    empty!.hidden = items.length > 0 || held !== null;
-
-    if (held !== null && !items.includes(held)) {
+    // Предмет в руках в world.inventory() не попадает: setHeld переводит его
+    // в 'hand', а inventoryItems отдаёт только 'inventory'. Поэтому он не
+    // подсвечивается в списке, а дописывается отдельной строкой.
+    if (held !== null) {
       const entry = document.createElement('li');
       entry.textContent = `${world.level.itemDefs[held]?.name ?? held} (в руках)`;
       entry.classList.add('held');
-      entry.addEventListener('click', () => { world.setHeld(null); render(); });
+      entry.addEventListener('click', () => world.setHeld(null));
       list!.append(entry);
     }
+
+    empty!.hidden = items.length > 0 || held !== null;
   }
 
   world.on((event) => {
@@ -3058,17 +3054,46 @@ export function createInventoryUi(world: World): InventoryUi {
 
 - [ ] **Step 5: Подключить предметы в `src/render/scene.ts`**
 
-Добавить импорт `import { buildItems } from './items';` и заменить хвост функции:
+**Внимание.** Живой список `interactables` и подписка, которая из него вычищает,
+уже есть в файле после задачи 10. Их надо ДОПОЛНИТЬ, а не заменить. Если вернуть
+на их место `return { scene, interactables: [...], doors }` со свежим массивом,
+вернётся дефект, ради которого задача 10 гоняла раунд правок: отпертый замок
+навсегда перехватывал бы луч, и дверь больше не открылась бы. Именно эта задача
+делает тот путь достижимым, так что поломка была бы не теоретической.
+
+Добавить импорт `import { buildItems } from './items';`.
+
+Строку создания предметов вставить сразу после дверей:
 
 ```ts
-  const doors = buildDoors(level, world);
-  scene.add(doors.group);
-
-  const items = buildItems(level, world);
+  const items = buildItems(level);
   scene.add(items.group);
-
-  return { scene, interactables: [...doors.targets, ...items.targets], doors };
 ```
+
+Начальное наполнение списка дополнить предметами:
+
+```ts
+  const interactables: THREE.Object3D[] = [...doors.targets, ...items.targets];
+```
+
+А существующую подписку расширить: подобранный предмет обязан исчезать из списка
+целей ровно так же, как уничтоженный замок. Иначе после подбора ключа луч
+продолжал бы находить его на полу и отвечать отказом.
+
+```ts
+  world.on((event) => {
+    let gone: string | null = null;
+    if (event.kind === 'objectDestroyed') gone = event.object;
+    if (event.kind === 'itemTaken' || event.kind === 'itemGone') gone = event.item;
+    if (gone === null) return;
+    const index = interactables.findIndex((t) => t.userData['targetId'] === gone);
+    if (index === -1) return;
+    interactables[index]?.removeFromParent();
+    interactables.splice(index, 1);
+  });
+```
+
+`return { scene, interactables, doors };` остаётся как есть.
 
 - [ ] **Step 6: Подключить руку и паузу в `src/main.ts`**
 
@@ -3096,7 +3121,8 @@ world.on((event) => {
   hand.resize(width / height);
 ```
 
-Внутри цикла в самое начало, до всей логики:
+Внутри цикла сразу после строки `const state = input.state;` (раньше нельзя —
+`state` там ещё не объявлена):
 
 ```ts
   if (state.toggleInventory) {
@@ -3125,7 +3151,8 @@ Run: `npm run dev`
 
 Проверить по списку:
 1. В `hall` на полу лежит золотистый ключ, подсказка «Подобрать: Латунный ключ».
-2. `E` подбирает его, меш исчезает.
+2. `E` подбирает его, меш исчезает — и наведение на то место, где он лежал,
+   больше не даёт никакой подсказки, даже отказа.
 3. `I` открывает инвентарь, игра встаёт на паузу, курсор освобождается, мышь больше не крутит камеру.
 4. Клик по строке берёт ключ в руки: строка подсвечивается, в правом нижнем углу появляется предмет.
 5. `I` закрывает инвентарь, клик по экрану возвращает захват курсора.
