@@ -3190,7 +3190,7 @@ git commit -m "Add world items, inventory overlay and held item rendering"
 ```ts
 import * as THREE from 'three';
 import { DOOR, ROOM } from '../config';
-import { roomBounds } from '../core/validate';
+import { doorOnVerticalWall, roomBounds } from '../core/validate';
 import type { Level } from '../core/types';
 
 /** Текст рисуется на канвасе: файлов-текстур в проекте нет. */
@@ -3224,10 +3224,12 @@ export function buildSigns(level: Level): THREE.Group {
     if (!door.sign) continue;
 
     const [dx, dz] = door.at;
+    // Табличка вешается со стороны комнаты `between[0]` — той, ИЗ которой в дверь
+    // входят. Сторону нельзя зашивать константой: PlaneGeometry односторонняя, и
+    // повешенная не с той стороны табличка уедет внутрь стены и отвернётся от игрока.
     const room = level.rooms.find((r) => r.id === door.between[0]);
     if (!room) continue;
     const b = roomBounds(room);
-    const onVerticalWall = Math.abs(dx - b.x0) < 1e-9 || Math.abs(dx - b.x1) < 1e-9;
 
     // MeshBasicMaterial не зависит от освещения: табличка останется яркой,
     // когда в комплексе позже выключат свет.
@@ -3237,25 +3239,37 @@ export function buildSigns(level: Level): THREE.Group {
     const y = DOOR.height + (ROOM.height - DOOR.height) / 2;
     const offset = ROOM.wallThickness / 2 + 0.02;
 
-    if (onVerticalWall) {
-      plate.position.set(dx - offset, y, dz);
-      plate.rotation.y = -Math.PI / 2;
-    } else {
-      plate.position.set(dx, y, dz - offset);
-      plate.rotation.y = Math.PI;
-    }
+    // Нормаль таблички смотрит в комнату. Проём лежит на той границе комнаты,
+    // к которой он ближе, и с этой стороны стены нужная нам сторона — внутренняя.
+    const normal = doorOnVerticalWall(door, room)
+      ? new THREE.Vector3(Math.abs(dx - b.x1) < Math.abs(dx - b.x0) ? -1 : 1, 0, 0)
+      : new THREE.Vector3(0, 0, Math.abs(dz - b.z1) < Math.abs(dz - b.z0) ? -1 : 1);
+    plate.rotation.y = Math.atan2(normal.x, normal.z);
+    plate.position.set(dx, y, dz).addScaledVector(normal, offset);
 
     group.add(plate);
 
-    const glow = new THREE.PointLight(0x7dff9b, 3, 4, 2);
-    glow.position.copy(plate.position);
+    // Лампа отодвинута от стены, а не посажена на саму табличку. Затухание
+    // физически корректное (decay 2), поэтому источник на 0.12 м от стены дал бы
+    // освещённость около 3 / 0.12² ≈ 200 и стена вокруг таблички превратилась бы
+    // в плоское белое пятно — ровно то, что уже случилось с потолком в задаче 8.
+    // Здесь 0.5 / 0.62² ≈ 1.3: ореол заметен, пересвета нет.
+    const glow = new THREE.PointLight(0x7dff9b, 0.5, 3, 2);
+    glow.position.copy(plate.position).addScaledVector(normal, 0.5);
     group.add(glow);
   }
 
   return group;
 }
 
-/** Белая стена и сильный свет в дальнем торце финального коридора. */
+/**
+ * Белая стена и сильный свет в дальнем торце финального коридора.
+ *
+ * Допущение: коридор идёт вдоль +Z, а дальний торец — у `z1`. В уровне 1 так и
+ * есть (`exit_hall` тянется с z=6 до z=26, игрок входит со стороны z=6). Обобщать
+ * на четыре ориентации незачем: выходной коридор в игре один, а ошибка была бы
+ * видна сразу — белая стена оказалась бы за спиной.
+ */
 export function buildExitGlow(level: Level): THREE.Group {
   const group = new THREE.Group();
 
@@ -3350,7 +3364,9 @@ Run: `npm run dev`
 
 Проверить по списку:
 1. Над дверью `d_exit` в комнате `office` видна светящаяся зелёная табличка EXIT, заметная от входа в комнату.
-2. Табличка подсвечивает стену вокруг себя.
+2. Табличка подсвечивает стену вокруг себя мягким ореолом. Если вместо ореола
+   видно плоское белое пятно без градиента — лампа снова слишком близко к стене,
+   это та же ошибка, что была с потолком в задаче 8.
 3. За дверью EXIT — длинный коридор, в дальнем конце белое пятно света.
 4. По мере приближения к концу коридора экран плавно заливается белым.
 5. При входе в триггер экран становится полностью белым и появляется «Ты выбрался.», курсор освобождается.
