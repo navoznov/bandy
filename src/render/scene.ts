@@ -2,16 +2,22 @@ import * as THREE from 'three';
 import { ROOM } from '../config';
 import { roomBounds } from '../core/validate';
 import type { Level } from '../core/types';
+import type { World } from '../core/world';
 import { makeGridTexture, roomMaterials } from './materials';
+import { buildDoors, type Doors } from './doors';
 import { buildWalls } from './walls';
 
 export interface SceneBuild {
   scene: THREE.Scene;
-  /** Объекты, по которым бьёт луч прицела. Наполняется в задачах 10 и 11. */
+  /**
+   * Живой список целей луча. Уничтоженная цель удаляется отсюда, а не только
+   * из сцены. Задача 11 дописывает сюда предметы.
+   */
   interactables: THREE.Object3D[];
+  doors: Doors;
 }
 
-export function buildScene(level: Level): SceneBuild {
+export function buildScene(level: Level, world: World): SceneBuild {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0d0d10);
   scene.fog = new THREE.Fog(0x0d0d10, 6, 34);
@@ -53,5 +59,24 @@ export function buildScene(level: Level): SceneBuild {
 
   scene.add(buildWalls(level));
 
-  return { scene, interactables: [] };
+  const doors = buildDoors(level, world);
+  scene.add(doors.group);
+
+  const interactables: THREE.Object3D[] = [...doors.targets];
+
+  // Убрать меш из сцены мало. Raycaster не смотрит ни на `visible`, ни на родителя —
+  // только на слои, — и продолжил бы бить по последней мировой матрице удалённого
+  // объекта. Замок висит ближе полотна, а `classify` для уничтоженного возвращает
+  // null, так что отпертая дверь навсегда отвечала бы «здесь не с чем
+  // взаимодействовать» и больше не открывалась. Список целей ведём здесь, чтобы
+  // правило было одно и для замков, и для предметов из задачи 11.
+  world.on((event) => {
+    if (event.kind !== 'objectDestroyed') return;
+    const index = interactables.findIndex((t) => t.userData['targetId'] === event.object);
+    if (index === -1) return;
+    interactables[index]?.removeFromParent();
+    interactables.splice(index, 1);
+  });
+
+  return { scene, interactables, doors };
 }
