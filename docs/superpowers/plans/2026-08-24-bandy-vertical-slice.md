@@ -4004,7 +4004,10 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # Именно false, а не true. Прерванный на середине деплой Pages оставляет
+  # окружение в неопределённом состоянии; официальный стартовый workflow
+  # GitHub тоже ставит здесь false.
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -4035,6 +4038,9 @@ jobs:
 ```
 
 - [ ] **Step 2: Заполнить `README.md`**
+
+Осторожно: блок ниже сам содержит тройные обратные кавычки внутри. В файл идёт
+СОДЕРЖИМОЕ, а не внешняя ограда. Проще всего записать файл через heredoc.
 
 ```markdown
 # Bandy
@@ -4070,17 +4076,23 @@ npm run build            # сборка в dist/
 
 **Settings → Pages → Build and deployment → Source → GitHub Actions**
 
-Без него workflow упадёт на шаге `configure-pages`.
+Без него workflow упадёт на шаге `configure-pages`. Сделать это надо ДО первого
+пуша в `main`, иначе первый же прогон покраснеет.
 
-- [ ] **Step 4: Закоммитить и запушить**
+- [ ] **Step 4: Закоммитить на рабочей ветке**
+
+Работа идёт в `vertical-slice`, а в `main` лежат пока только документы. Пушить
+`main` на этом шаге НЕЛЬЗЯ: кода там нет, и Pages опубликует пустую страницу.
 
 ```bash
 git add .github/workflows/deploy.yml README.md
 git commit -m "Add GitHub Pages deployment workflow"
-git push -u origin main
 ```
 
-- [ ] **Step 5: Проверить публикацию**
+Слияние в `main` и первый настоящий деплой происходят ПОСЛЕ финального ревью всей
+ветки, при её завершении. Пуш выполняет владелец репозитория.
+
+- [ ] **Step 5: Проверить публикацию (после слияния в `main`)**
 
 1. Открыть вкладку Actions в репозитории, дождаться зелёного прогона.
 2. Открыть `https://navoznov.github.io/bandy/` — игра должна запуститься.
