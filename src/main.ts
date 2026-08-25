@@ -13,7 +13,15 @@ import { createHud } from './ui/hud';
 import { createInventoryUi } from './ui/inventory';
 import { hasWebGl, showFatal } from './ui/fatal';
 
+/**
+ * Останавливает игровой цикл. Заполняется после создания рендерера: ловушки ниже
+ * нужны раньше, чем он существует. Без этого экран ошибки от сбоя в обработчике
+ * DOM-события накрывал бы картинку, а цикл продолжал бы считать и рисовать позади.
+ */
+let stopLoop: () => void = () => {};
+
 window.addEventListener('error', (event) => {
+  stopLoop();
   showFatal('Непойманная ошибка', [
     event.message,
     event.error instanceof Error && event.error.stack ? event.error.stack : '',
@@ -21,6 +29,7 @@ window.addEventListener('error', (event) => {
 });
 
 window.addEventListener('unhandledrejection', (event) => {
+  stopLoop();
   showFatal('Непойманный отказ промиса', [String(event.reason)]);
 });
 
@@ -51,6 +60,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 // Без тонмаппинга всё ярче единицы жёстко срезается в чистый белый, и любой
 // пересвет читается плоским диском вместо мягкого блика.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
+stopLoop = () => renderer.setAnimationLoop(null);
 
 const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 60);
 camera.rotation.order = 'YXZ';

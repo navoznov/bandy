@@ -3907,7 +3907,15 @@ try/catch вокруг цикла закрывает только цикл. Ош
 Добавить сразу после импортов, ДО всего остального кода:
 
 ```ts
+/**
+ * Останавливает игровой цикл. Заполняется после создания рендерера: ловушки ниже
+ * нужны раньше, чем он существует. Без этого экран ошибки от сбоя в обработчике
+ * DOM-события накрывал бы картинку, а цикл продолжал бы считать и рисовать позади.
+ */
+let stopLoop: () => void = () => {};
+
 window.addEventListener('error', (event) => {
+  stopLoop();
   showFatal('Непойманная ошибка', [
     event.message,
     event.error instanceof Error && event.error.stack ? event.error.stack : '',
@@ -3915,8 +3923,15 @@ window.addEventListener('error', (event) => {
 });
 
 window.addEventListener('unhandledrejection', (event) => {
+  stopLoop();
   showFatal('Непойманный отказ промиса', [String(event.reason)]);
 });
+```
+
+А сразу после строки `renderer.toneMapping = ...` присвоить настоящий останов:
+
+```ts
+stopLoop = () => renderer.setAnimationLoop(null);
 ```
 
 Повторный вызов `showFatal` безвреден: у неё стоит флаг `shown`. Поэтому намеренные

@@ -16,12 +16,11 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
     // синтезирует click — без этой проверки каждое касание экрана бросало бы
     // TypeError. Синхронный бросок, catch ниже его не поймал бы.
     if (typeof canvas.requestPointerLock !== 'function') return;
-    // Chrome примерно 1.25 с после Escape не отдаёт захват и реджектит промис.
-    // Без catch это всплывает необработанным отказом.
+    // Отказ бывает штатным: Chrome примерно 1.25 с после Escape захват не отдаёт,
+    // и без catch это всплыло бы необработанным отказом промиса. Но молчать обо
+    // всех подряд нельзя — запрет из permissions-policy во фрейме выглядел бы как
+    // неработающий клик без единого следа в консоли.
     canvas.requestPointerLock().catch((error: unknown) => {
-      // Отказ бывает штатным: Chrome примерно 1.25 с после Escape захват не отдаёт.
-      // Но молчать обо всех подряд нельзя — запрет из permissions-policy выглядел бы
-      // как неработающий клик без объяснений.
       console.warn('Захват курсора не удался:', error);
     });
   });
