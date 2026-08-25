@@ -2443,7 +2443,7 @@ git commit -m "Add game loop with keyboard and mouse controls"
 **Interfaces:**
 - Consumes: `World.describe`/`World.interact` из Task 7, `INTERACT_RANGE` из Task 1
 - Produces:
-  - `buildDoors(level, world): { group: THREE.Group; targets: THREE.Object3D[]; update(dt: number): void }`
+  - `buildDoors(level, world): { group: THREE.Group; targets: THREE.Object3D[]; update(dt: number, player: Vec2): void }`
   - `createHud(): { setPrompt(text: string | null): void; setRefusal(text: string | null): void; flash(text: string): void }`
   - Соглашение: у каждого меша-цели в `userData.targetId` лежит идентификатор для `World.describe`
 
@@ -2521,6 +2521,7 @@ export function createHud(): Hud {
 import * as THREE from 'three';
 import { DOOR } from '../config';
 import { roomBounds } from '../core/validate';
+import type { Vec2 } from '../core/collision';
 import type { Level } from '../core/types';
 import type { World } from '../core/world';
 
@@ -2531,6 +2532,9 @@ const LOCK_MATERIAL = new THREE.MeshStandardMaterial({
 
 interface Leaf {
   pivot: THREE.Group;
+  /** Стена стоит поперёк оси X. От этого зависит знак четверти оборота. */
+  onVerticalWall: boolean;
+  at: Vec2;
   closedAngle: number;
   openAngle: number;
   progress: number; // 0 закрыта, 1 открыта
@@ -2540,7 +2544,21 @@ interface Leaf {
 export interface Doors {
   group: THREE.Group;
   targets: THREE.Object3D[];
-  update(dt: number): void;
+  update(dt: number, player: Vec2): void;
+}
+
+/**
+ * Куда распахнуть створку, чтобы она ушла ОТ игрока, а не ему в лицо (спека §9).
+ *
+ * Поворот на +π/2 переводит направление полотна +Z → +X → -Z → -X. Закрытая
+ * створка на вертикальной стене смотрит в +Z, на горизонтальной — в +X, поэтому
+ * знак четверти оборота у этих двух случаев противоположный. Проверено на three.js.
+ */
+function openAngleAwayFrom(leaf: Leaf, player: Vec2): number {
+  const quarter = Math.PI / 2;
+  return leaf.onVerticalWall
+    ? leaf.closedAngle + (player.x < leaf.at.x ? quarter : -quarter)
+    : leaf.closedAngle + (player.z < leaf.at.z ? -quarter : quarter);
 }
 
 export function buildDoors(level: Level, world: World): Doors {
@@ -2562,7 +2580,10 @@ export function buildDoors(level: Level, world: World): Doors {
       0,
       onVerticalWall ? dz - DOOR.width / 2 : dz,
     );
-    const closedAngle = onVerticalWall ? Math.PI / 2 : 0;
+    // Поворот на θ кладёт локальный +X в мировой (cos θ, -sin θ). Полотно обязано
+    // заполнить проём: на вертикальной стене — уйти в +Z, а это θ = -π/2.
+    // При +π/2 створка встаёт на целую ширину двери мимо проёма. Проверено числами.
+    const closedAngle = onVerticalWall ? -Math.PI / 2 : 0;
     pivot.rotation.y = closedAngle;
 
     const geometry = new THREE.BoxGeometry(DOOR.width, DOOR.height, 0.06);
@@ -2575,8 +2596,10 @@ export function buildDoors(level: Level, world: World): Doors {
     group.add(pivot);
     leaves.set(door.id, {
       pivot,
+      onVerticalWall,
+      at: { x: dx, z: dz },
       closedAngle,
-      openAngle: closedAngle - Math.PI / 2,
+      openAngle: closedAngle, // настоящий угол считается в момент открывания
       progress: 0,
       target: 0,
     });
@@ -2599,17 +2622,18 @@ export function buildDoors(level: Level, world: World): Doors {
       const leaf = leaves.get(event.door);
       if (leaf) leaf.target = 0;
     }
-    if (event.kind === 'objectDestroyed') {
-      const mesh = targets.find((t) => t.userData['targetId'] === event.object);
-      mesh?.removeFromParent();
-    }
+    // Уничтожение цели обрабатывает scene.ts: правило одно для замков и предметов.
   });
 
   return {
     group,
     targets,
-    update(dt) {
+    update(dt, player) {
       for (const leaf of leaves.values()) {
+        // Сторону выбираем в момент начала хода: только тогда известно, где игрок.
+        if (leaf.target === 1 && leaf.progress === 0) {
+          leaf.openAngle = openAngleAwayFrom(leaf, player);
+        }
         if (leaf.progress === leaf.target) continue;
         const step = dt / DOOR.openSeconds;
         leaf.progress = leaf.target > leaf.progress
@@ -2644,6 +2668,10 @@ import type { World } from '../core/world';
 ```ts
 export interface SceneBuild {
   scene: THREE.Scene;
+  /**
+   * Живой список целей луча. Уничтоженная цель удаляется отсюда, а не только
+   * из сцены. Задача 11 дописывает сюда предметы.
+   */
   interactables: THREE.Object3D[];
   doors: Doors;
 }
@@ -2657,7 +2685,23 @@ export interface SceneBuild {
   const doors = buildDoors(level, world);
   scene.add(doors.group);
 
-  return { scene, interactables: [...doors.targets], doors };
+  const interactables: THREE.Object3D[] = [...doors.targets];
+
+  // Убрать меш из сцены мало. Raycaster не смотрит ни на `visible`, ни на родителя —
+  // только на слои, — и продолжил бы бить по последней мировой матрице удалённого
+  // объекта. Замок висит ближе полотна, а `classify` для уничтоженного возвращает
+  // null, так что отпертая дверь навсегда отвечала бы «здесь не с чем
+  // взаимодействовать» и больше не открывалась. Список целей ведём здесь, чтобы
+  // правило было одно и для замков, и для предметов из задачи 11.
+  world.on((event) => {
+    if (event.kind !== 'objectDestroyed') return;
+    const index = interactables.findIndex((t) => t.userData['targetId'] === event.object);
+    if (index === -1) return;
+    interactables[index]?.removeFromParent();
+    interactables.splice(index, 1);
+  });
+
+  return { scene, interactables, doors };
 ```
 
 - [ ] **Step 5: Добавить луч прицела и взаимодействие в `src/main.ts`**
@@ -2676,6 +2720,8 @@ const { scene, interactables, doors } = buildScene(level, world);
 const hud = createHud();
 const raycaster = new THREE.Raycaster();
 raycaster.far = INTERACT_RANGE;
+/** Центр экрана. Вынесен из цикла: в кадре нельзя мусорить аллокациями. */
+const SCREEN_CENTER = new THREE.Vector2(0, 0);
 
 world.on((event) => {
   if (event.kind === 'said') hud.flash(event.text);
@@ -2685,9 +2731,13 @@ world.on((event) => {
 И внутри цикла, перед `renderer.render`, вставить:
 
 ```ts
-  doors.update(dt);
+  doors.update(dt, player);
 
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  // Матрица камеры обновляется внутри render, то есть уже после этого места.
+  // Без явного обновления луч бил бы туда, куда игрок смотрел кадр назад.
+  camera.updateMatrixWorld();
+
+  raycaster.setFromCamera(SCREEN_CENTER, camera);
   const hit = raycaster.intersectObjects(interactables, false)[0];
   const targetId = hit?.object.userData['targetId'] as string | undefined;
 
@@ -2698,9 +2748,12 @@ world.on((event) => {
     if (outcome.ok) hud.setPrompt(outcome.prompt);
     else hud.setRefusal(outcome.refusal);
 
-    if (state.interact) world.interact(targetId);
+    if (state.interact && input.isLocked()) world.interact(targetId);
   }
 ```
+
+Блок ставится после строк `camera.position.set(...)` и `camera.rotation.set(...)`
+и перед `renderer.render(...)`.
 
 - [ ] **Step 6: Проверить глазами**
 
@@ -2713,6 +2766,8 @@ Run: `npm run dev`
 4. На двери `d_corr_office` виден жёлтый замок, подсказка на самой двери — «Заперто. На двери висит замок.» с красноватым фоном.
 5. Наведение на замок без предмета в руках даёт «Замок заперт. Нужно чем-то открыть.»
 6. Подсказка исчезает, когда отходишь дальше 2.5 м.
+7. Замок на `d_corr_office` видно и достаёт луч со стороны коридора, а не только
+   изнутри офиса: подходить к нему игрок будет именно оттуда.
 
 - [ ] **Step 7: Коммит**
 
