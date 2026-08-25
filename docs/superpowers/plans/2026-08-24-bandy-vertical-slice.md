@@ -2436,6 +2436,9 @@ git commit -m "Add game loop with keyboard and mouse controls"
 
 **Files:**
 - Create: `src/render/doors.ts`, `src/ui/hud.ts`
+- Modify: `src/core/validate.ts` — вынести определение ориентации двери
+- Modify: `src/core/colliders.ts` — начать пользоваться вынесенным
+- Test: `src/core/validate.test.ts`
 - Modify: `index.html` — добавить разметку HUD
 - Modify: `src/render/scene.ts` — добавить створки и замки в сцену и в список целей
 - Modify: `src/main.ts` — луч прицела и обработка взаимодействия
@@ -2495,32 +2498,106 @@ export function createHud(): Hud {
 
   let flashUntil = 0;
 
-  function show(text: string | null, refusal: boolean): void {
+  function writePrompt(text: string | null, refusal: boolean): void {
+    prompt.textContent = text ?? '';
+    prompt.classList.toggle('visible', text !== null);
+    prompt.classList.toggle('refusal', refusal);
+  }
+
+  /**
+   * Прицел отражает то, на что игрок наведён ПРЯМО СЕЙЧАС, и тост его не трогает:
+   * иначе любое сообщение `say` красило бы прицел активным жёлтым посреди пустой
+   * комнаты и на две секунды прятало бы настоящий отказ.
+   */
+  function aim(text: string | null, refusal: boolean): void {
+    reticle.classList.toggle('active', text !== null && !refusal);
     if (performance.now() < flashUntil) return;
-    prompt!.textContent = text ?? '';
-    prompt!.classList.toggle('visible', text !== null);
-    prompt!.classList.toggle('refusal', refusal);
-    reticle!.classList.toggle('active', text !== null && !refusal);
+    writePrompt(text, refusal);
   }
 
   return {
-    setPrompt: (text) => show(text, false),
-    setRefusal: (text) => show(text, true),
+    setPrompt: (text) => aim(text, false),
+    setRefusal: (text) => aim(text, true),
     flash(text) {
-      flashUntil = 0;
-      show(text, false);
+      writePrompt(text, false);
       flashUntil = performance.now() + 2200;
     },
   };
 }
 ```
 
-- [ ] **Step 3: Создать `src/render/doors.ts`**
+- [ ] **Step 3: Вынести ориентацию двери в `src/core/validate.ts`**
+
+От одного и того же факта — вдоль какой оси идёт стена с проёмом — зависят и
+коллайдер двери, и её полотно. Считать его в двух файлах порознь нельзя: разъедутся
+— игрок будет видеть одно, а упираться в другое, и поймает это только глаз. В
+`render/` тестов нет, так что больше поймать некому.
+
+Дописать в `src/core/validate.ts` сразу после объявления `EPS`:
+
+```ts
+/**
+ * Прорезан ли проём в стене, идущей вдоль оси Z (то есть на границе по X).
+ *
+ * Единственное место, где этот факт вычисляется. От него зависят и коллайдер
+ * двери (`core/colliders.ts`), и её полотно с петлёй (`render/doors.ts`).
+ */
+export function doorOnVerticalWall(door: DoorDef, room: RoomDef): boolean {
+  const b = roomBounds(room);
+  const [dx] = door.at;
+  return Math.abs(dx - b.x0) < EPS || Math.abs(dx - b.x1) < EPS;
+}
+```
+
+В `src/core/colliders.ts` добавить импорт и заменить вычисление на вызов:
+
+```ts
+import { doorOnVerticalWall, roomBounds } from './validate';
+```
+
+```ts
+  const room = level.rooms.find((r) => r.id === door.between[0])!;
+  const onVerticalWall = doorOnVerticalWall(door, room);
+```
+
+(строка `const b = roomBounds(room);` в `doorCollider` больше не нужна — она была
+нужна только ради этой проверки.)
+
+- [ ] **Step 4: Дописать тест в `src/core/validate.test.ts` и прогнать**
+
+```ts
+describe('doorOnVerticalWall', () => {
+  const hall = { id: 'hall', rect: [0, 0, 8, 6], color: '#888', light: 1 } as RoomDef;
+
+  it('дверь на восточной стене комнаты лежит на вертикальной стене', () => {
+    const door = { id: 'd', between: ['hall', 'other'], at: [8, 3] } as DoorDef;
+    expect(doorOnVerticalWall(door, hall)).toBe(true);
+  });
+
+  it('дверь на западной стене тоже', () => {
+    const door = { id: 'd', between: ['hall', 'other'], at: [0, 3] } as DoorDef;
+    expect(doorOnVerticalWall(door, hall)).toBe(true);
+  });
+
+  it('дверь на южной стене лежит на горизонтальной', () => {
+    const door = { id: 'd', between: ['hall', 'other'], at: [4, 6] } as DoorDef;
+    expect(doorOnVerticalWall(door, hall)).toBe(false);
+  });
+});
+```
+
+Импорты в шапке файла дополнить `doorOnVerticalWall`, а типы — `DoorDef`, `RoomDef`,
+если их там ещё нет.
+
+Run: `npm test src/core/validate.test.ts`
+Expected: все зелёные, включая три новых.
+
+- [ ] **Step 5: Создать `src/render/doors.ts`**
 
 ```ts
 import * as THREE from 'three';
 import { DOOR } from '../config';
-import { roomBounds } from '../core/validate';
+import { doorOnVerticalWall } from '../core/validate';
 import type { Vec2 } from '../core/collision';
 import type { Level } from '../core/types';
 import type { World } from '../core/world';
@@ -2529,6 +2606,10 @@ const LEAF_MATERIAL = new THREE.MeshStandardMaterial({ color: 0x6b533c, roughnes
 const LOCK_MATERIAL = new THREE.MeshStandardMaterial({
   color: 0xb8a03a, roughness: 0.4, metalness: 0.6,
 });
+// Размеры одинаковы у всех дверей и всех замков, поэтому геометрия общая — как
+// и материалы выше. Из-за этого её нельзя освобождать при уничтожении одной цели.
+const LEAF_GEOMETRY = new THREE.BoxGeometry(DOOR.width, DOOR.height, 0.06);
+const LOCK_GEOMETRY = new THREE.BoxGeometry(0.14, 0.2, 0.08);
 
 interface Leaf {
   pivot: THREE.Group;
@@ -2570,8 +2651,7 @@ export function buildDoors(level: Level, world: World): Doors {
     const [dx, dz] = door.at;
     const room = level.rooms.find((r) => r.id === door.between[0]);
     if (!room) continue;
-    const b = roomBounds(room);
-    const onVerticalWall = Math.abs(dx - b.x0) < 1e-9 || Math.abs(dx - b.x1) < 1e-9;
+    const onVerticalWall = doorOnVerticalWall(door, room);
 
     // Петля у одного края проёма, полотно уходит от неё.
     const pivot = new THREE.Group();
@@ -2586,8 +2666,7 @@ export function buildDoors(level: Level, world: World): Doors {
     const closedAngle = onVerticalWall ? -Math.PI / 2 : 0;
     pivot.rotation.y = closedAngle;
 
-    const geometry = new THREE.BoxGeometry(DOOR.width, DOOR.height, 0.06);
-    const leaf = new THREE.Mesh(geometry, LEAF_MATERIAL);
+    const leaf = new THREE.Mesh(LEAF_GEOMETRY, LEAF_MATERIAL);
     leaf.position.set(DOOR.width / 2, DOOR.height / 2, 0);
     leaf.userData['targetId'] = door.id;
     pivot.add(leaf);
@@ -2605,7 +2684,7 @@ export function buildDoors(level: Level, world: World): Doors {
     });
 
     if (door.lock) {
-      const lock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.08), LOCK_MATERIAL);
+      const lock = new THREE.Mesh(LOCK_GEOMETRY, LOCK_MATERIAL);
       lock.position.set(DOOR.width * 0.82, 1.15, 0.07);
       lock.userData['targetId'] = door.lock;
       pivot.add(lock);
@@ -2648,7 +2727,7 @@ export function buildDoors(level: Level, world: World): Doors {
 }
 ```
 
-- [ ] **Step 4: Подключить двери в `src/render/scene.ts`**
+- [ ] **Step 6: Подключить двери в `src/render/scene.ts`**
 
 Изменить сигнатуру и тело:
 
@@ -2704,7 +2783,7 @@ export interface SceneBuild {
   return { scene, interactables, doors };
 ```
 
-- [ ] **Step 5: Добавить луч прицела и взаимодействие в `src/main.ts`**
+- [ ] **Step 7: Добавить луч прицела и взаимодействие в `src/main.ts`**
 
 Добавить импорты:
 
@@ -2733,9 +2812,11 @@ world.on((event) => {
 ```ts
   doors.update(dt, player);
 
-  // Матрица камеры обновляется внутри render, то есть уже после этого места.
-  // Без явного обновления луч бил бы туда, куда игрок смотрел кадр назад.
+  // Матрицы обновляются внутри render, то есть уже после этого места. Без явного
+  // обновления луч бил бы туда, куда игрок смотрел кадр назад, и по створке в том
+  // положении, в котором она была кадр назад.
   camera.updateMatrixWorld();
+  doors.group.updateMatrixWorld(true);
 
   raycaster.setFromCamera(SCREEN_CENTER, camera);
   const hit = raycaster.intersectObjects(interactables, false)[0];
@@ -2755,7 +2836,7 @@ world.on((event) => {
 Блок ставится после строк `camera.position.set(...)` и `camera.rotation.set(...)`
 и перед `renderer.render(...)`.
 
-- [ ] **Step 6: Проверить глазами**
+- [ ] **Step 8: Проверить глазами**
 
 Run: `npm run dev`
 
@@ -2769,10 +2850,11 @@ Run: `npm run dev`
 7. Замок на `d_corr_office` видно и достаёт луч со стороны коридора, а не только
    изнутри офиса: подходить к нему игрок будет именно оттуда.
 
-- [ ] **Step 7: Коммит**
+- [ ] **Step 9: Коммит**
 
 ```bash
-git add index.html src/render/doors.ts src/render/scene.ts src/ui/hud.ts src/main.ts
+git add index.html src/core/validate.ts src/core/validate.test.ts src/core/colliders.ts \
+  src/render/doors.ts src/render/scene.ts src/ui/hud.ts src/main.ts
 git commit -m "Add reticle targeting, prompts, animated doors and locks"
 ```
 
