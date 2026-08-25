@@ -18,7 +18,12 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
     if (typeof canvas.requestPointerLock !== 'function') return;
     // Chrome примерно 1.25 с после Escape не отдаёт захват и реджектит промис.
     // Без catch это всплывает необработанным отказом.
-    canvas.requestPointerLock().catch(() => {});
+    canvas.requestPointerLock().catch((error: unknown) => {
+      // Отказ бывает штатным: Chrome примерно 1.25 с после Escape захват не отдаёт.
+      // Но молчать обо всех подряд нельзя — запрет из permissions-policy выглядел бы
+      // как неработающий клик без объяснений.
+      console.warn('Захват курсора не удался:', error);
+    });
   });
 
   document.addEventListener('pointerlockchange', () => {

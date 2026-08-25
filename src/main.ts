@@ -11,12 +11,35 @@ import { buildScene } from './render/scene';
 import { createHand } from './render/hand';
 import { createHud } from './ui/hud';
 import { createInventoryUi } from './ui/inventory';
+import { hasWebGl, showFatal } from './ui/fatal';
+
+window.addEventListener('error', (event) => {
+  showFatal('Непойманная ошибка', [
+    event.message,
+    event.error instanceof Error && event.error.stack ? event.error.stack : '',
+  ]);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  showFatal('Непойманный отказ промиса', [String(event.reason)]);
+});
 
 const canvas = document.querySelector<HTMLCanvasElement>('#canvas');
 if (!canvas) throw new Error('Канвас не найден.');
 
+if (!hasWebGl()) {
+  showFatal('WebGL недоступен', [
+    'Браузер не смог создать графический контекст.',
+    'Проверь, включено ли аппаратное ускорение, и попробуй другой браузер.',
+  ]);
+  throw new Error('WebGL недоступен');
+}
+
 const loaded = loadLevel();
-if (!loaded.ok) throw new Error('Уровень не прошёл валидацию:\n' + loaded.errors.join('\n'));
+if (!loaded.ok) {
+  showFatal('Уровень не прошёл валидацию', loaded.errors);
+  throw new Error('Уровень не прошёл валидацию');
+}
 const level = loaded.level;
 
 const world = new World(level);
@@ -91,84 +114,93 @@ document.addEventListener('visibilitychange', () => {
 });
 
 renderer.setAnimationLoop((now) => {
-  // Клампим шаг времени: после сворачивания вкладки он приходит в секундах
-  // и телепортировал бы игрока сквозь стены.
-  const dt = Math.min((now - previous) / 1000, MAX_DELTA_SECONDS);
-  previous = now;
+  try {
+    // Клампим шаг времени: после сворачивания вкладки он приходит в секундах
+    // и телепортировал бы игрока сквозь стены.
+    const dt = Math.min((now - previous) / 1000, MAX_DELTA_SECONDS);
+    previous = now;
 
-  const state = input.state;
+    const state = input.state;
 
-  if (state.toggleInventory) {
-    inventoryUi.toggle();
-    if (inventoryUi.isOpen() && document.pointerLockElement) document.exitPointerLock();
-  }
-  const paused = inventoryUi.isOpen();
+    if (state.toggleInventory) {
+      inventoryUi.toggle();
+      if (inventoryUi.isOpen() && document.pointerLockElement) document.exitPointerLock();
+    }
+    const paused = inventoryUi.isOpen();
 
-  if (input.isLocked() && !paused) {
-    yaw -= state.look.dx * LOOK.sensitivity;
-    pitch -= state.look.dy * LOOK.sensitivity;
-    pitch = Math.max(-LOOK.maxPitch, Math.min(LOOK.maxPitch, pitch));
+    if (input.isLocked() && !paused) {
+      yaw -= state.look.dx * LOOK.sensitivity;
+      pitch -= state.look.dy * LOOK.sensitivity;
+      pitch = Math.max(-LOOK.maxPitch, Math.min(LOOK.maxPitch, pitch));
 
-    const delta = moveDelta(state.move, yaw, PLAYER.speed, dt);
-    if (delta.x !== 0 || delta.z !== 0) {
-      const boxes = activeColliders(allColliders, world.openDoors());
-      const next = resolveMove(player, delta, PLAYER.radius, boxes);
-      player.x = next.x;
-      player.z = next.z;
+      const delta = moveDelta(state.move, yaw, PLAYER.speed, dt);
+      if (delta.x !== 0 || delta.z !== 0) {
+        const boxes = activeColliders(allColliders, world.openDoors());
+        const next = resolveMove(player, delta, PLAYER.radius, boxes);
+        player.x = next.x;
+        player.z = next.z;
+      }
+
+      world.checkTriggers(player.x, player.z);
     }
 
-    world.checkTriggers(player.x, player.z);
-  }
+    camera.position.set(player.x, PLAYER.eyeHeight, player.z);
+    camera.rotation.set(pitch, yaw, 0);
 
-  camera.position.set(player.x, PLAYER.eyeHeight, player.z);
-  camera.rotation.set(pitch, yaw, 0);
+    // Анимация створки на паузе намеренно НЕ замирает. Проходимость двери
+    // переключается мгновенно в момент toggleDoor и о паузе не знает, поэтому
+    // замороженное на середине полотно разошлось бы с коллайдером: игрок видел бы
+    // щель, а проходил насквозь. Смотреть на анимацию всё равно некому — экран
+    // закрыт оверлеем инвентаря.
+    doors.update(dt, player);
 
-  // Анимация створки на паузе намеренно НЕ замирает. Проходимость двери
-  // переключается мгновенно в момент toggleDoor и о паузе не знает, поэтому
-  // замороженное на середине полотно разошлось бы с коллайдером: игрок видел бы
-  // щель, а проходил насквозь. Смотреть на анимацию всё равно некому — экран
-  // закрыт оверлеем инвентаря.
-  doors.update(dt, player);
+    // Матрицы обновляются внутри render, то есть уже после этого места. Без явного
+    // обновления луч бил бы туда, куда игрок смотрел кадр назад, и по створке в том
+    // положении, в котором она была кадр назад.
+    camera.updateMatrixWorld();
+    doors.group.updateMatrixWorld(true);
 
-  // Матрицы обновляются внутри render, то есть уже после этого места. Без явного
-  // обновления луч бил бы туда, куда игрок смотрел кадр назад, и по створке в том
-  // положении, в котором она была кадр назад.
-  camera.updateMatrixWorld();
-  doors.group.updateMatrixWorld(true);
+    if (!paused) {
+      raycaster.setFromCamera(SCREEN_CENTER, camera);
+      const hit = raycaster.intersectObjects(interactables, false)[0];
+      const targetId = hit?.object.userData['targetId'] as string | undefined;
+      setUseButtonEnabled(targetId !== undefined);
 
-  if (!paused) {
-    raycaster.setFromCamera(SCREEN_CENTER, camera);
-    const hit = raycaster.intersectObjects(interactables, false)[0];
-    const targetId = hit?.object.userData['targetId'] as string | undefined;
-    setUseButtonEnabled(targetId !== undefined);
+      if (targetId === undefined) {
+        hud.setPrompt(null);
+      } else {
+        const outcome = world.describe(targetId);
+        if (outcome.ok) hud.setPrompt(outcome.prompt);
+        else hud.setRefusal(outcome.refusal);
 
-    if (targetId === undefined) {
-      hud.setPrompt(null);
+        if (state.interact && input.isLocked()) world.interact(targetId);
+      }
     } else {
-      const outcome = world.describe(targetId);
-      if (outcome.ok) hud.setPrompt(outcome.prompt);
-      else hud.setRefusal(outcome.refusal);
-
-      if (state.interact && input.isLocked()) world.interact(targetId);
+      hud.setPrompt(null);
     }
-  } else {
-    hud.setPrompt(null);
-  }
 
-  // Тот же белый оверлей служит и засветкой на подходе, и экраном победы.
-  if (winTrigger) {
-    const [tx, tz, tw, td] = winTrigger.rect;
-    const cx = tx + tw / 2;
-    const cz = tz + td / 2;
-    const distance = Math.hypot(player.x - cx, player.z - cz);
-    const glow = Math.max(0, Math.min(1, (10 - distance) / 9));
-    flashEl.style.opacity = String(world.won ? 1 : glow * 0.9);
-  }
+    // Тот же белый оверлей служит и засветкой на подходе, и экраном победы.
+    if (winTrigger) {
+      const [tx, tz, tw, td] = winTrigger.rect;
+      const cx = tx + tw / 2;
+      const cz = tz + td / 2;
+      const distance = Math.hypot(player.x - cx, player.z - cz);
+      const glow = Math.max(0, Math.min(1, (10 - distance) / 9));
+      flashEl.style.opacity = String(world.won ? 1 : glow * 0.9);
+    }
 
-  renderer.autoClear = true;
-  renderer.render(scene, camera);
-  renderer.autoClear = false;
-  renderer.clearDepth();
-  renderer.render(hand.scene, hand.camera);
-  input.consume();
+    renderer.autoClear = true;
+    renderer.render(scene, camera);
+    renderer.autoClear = false;
+    renderer.clearDepth();
+    renderer.render(hand.scene, hand.camera);
+    input.consume();
+  } catch (error) {
+    // Без остановки цикла браузер получит шестьдесят ошибок в секунду и вкладка ляжет.
+    renderer.setAnimationLoop(null);
+    showFatal('Ошибка в игровом цикле', [
+      error instanceof Error ? error.message : String(error),
+      error instanceof Error && error.stack ? error.stack : '',
+    ]);
+  }
 });
