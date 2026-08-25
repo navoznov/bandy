@@ -3427,6 +3427,8 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
 - Modify: `index.html` — экранные кнопки, стик, оверлей ориентации, ссылка на манифест
 - Create: `src/input/index.ts` — выбор активной схемы
 - Modify: `src/main.ts` — подключить выбор схемы
+- Modify: `src/core/movement.ts` — сделать скорость аналоговой
+- Test: `src/core/movement.test.ts`
 
 **Interfaces:**
 - Consumes: `InputSource`, `InputState` из Task 9
@@ -3441,7 +3443,7 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
 ```html
     <div id="touch" hidden>
       <div id="stick"><div id="stick-knob"></div></div>
-      <button id="btn-use" type="button">Взять</button>
+      <button id="btn-use" type="button">Действие</button>
       <button id="btn-bag" type="button">Рюкзак</button>
     </div>
     <div id="rotate" hidden><p>Поверни телефон горизонтально</p></div>
@@ -3450,7 +3452,9 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
 И в `<style>`:
 
 ```css
-      #touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+      /* Без z-index намеренно: тогда позиционированные потомки участвуют в корневом
+         контексте наложения, и кнопке «Рюкзак» можно поднять z-index выше инвентаря. */
+      #touch { position: fixed; inset: 0; pointer-events: none; }
       #touch[hidden] { display: none; }
       #stick { position: absolute; width: 120px; height: 120px; border-radius: 50%;
                border: 2px solid rgba(255,255,255,0.3); opacity: 0; }
@@ -3465,12 +3469,17 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
       #touch button:disabled { opacity: 0.35; }
       #btn-use { right: calc(20px + env(safe-area-inset-right));
                  bottom: calc(28px + env(safe-area-inset-bottom)); }
+      /* Выше инвентаря (10): на телефоне это единственный способ его закрыть.
+         Подсказка «I или Tab» внутри инвентаря пальцем не нажимается. */
       #btn-bag { right: calc(20px + env(safe-area-inset-right));
-                 top: calc(20px + env(safe-area-inset-top)); min-height: 48px; }
-      #rotate { position: fixed; inset: 0; display: flex; align-items: center;
+                 top: calc(20px + env(safe-area-inset-top)); min-height: 48px;
+                 z-index: 11; }
+      /* По умолчанию СКРЫТ. Показывается только медиазапросом ниже. Если написать
+         здесь display: flex, оверлей закроет игру и в ландшафте тоже — снять его
+         будет нечем, потому что JS только убирает атрибут hidden. */
+      #rotate { position: fixed; inset: 0; display: none; align-items: center;
                 justify-content: center; background: #0d0d10; color: #f2f2f2;
                 font: 20px system-ui, sans-serif; text-align: center; z-index: 30; }
-      #rotate[hidden] { display: none; }
       @media (orientation: portrait) and (pointer: coarse) {
         #rotate:not([hidden]) { display: flex; }
       }
@@ -3499,6 +3508,49 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
 ```html
     <link rel="manifest" href="manifest.webmanifest" />
 ```
+
+И там же добавить современный аналог рядом со старым мета-тегом — не вместо него,
+старый всё ещё нужен Safari:
+
+```html
+    <meta name="mobile-web-app-capable" content="yes" />
+```
+
+Браузер уже пишет в консоль, что `apple-mobile-web-app-capable` устарел; это
+замечание висит запаркованным с задачи 8 и закрывается здесь.
+
+- [ ] **Step 1c: Сделать скорость аналоговой в `src/core/movement.ts`**
+
+Клавиатура даёт `move` длиной 1 или √2, поэтому `moveDelta` делит на длину и всегда
+выдаёт полную скорость. Стик даёт любую длину от 0 до 1 — и при делении на длину
+даже касание с отклонением в пиксель разогнало бы игрока до 3 м/с. Стик стал бы
+переключателем вместо стика.
+
+Заменить строку вычисления шага:
+
+```ts
+  // Делим на длину только когда она БОЛЬШЕ единицы: диагональ WASD остаётся
+  // нормированной, а неполное отклонение стика даёт пропорционально меньший шаг.
+  const step = (speed * dt) / Math.max(length, 1);
+```
+
+- [ ] **Step 1d: Дописать тесты в `src/core/movement.test.ts` и прогнать**
+
+```ts
+  it('половинное отклонение стика даёт половину скорости', () => {
+    const half = moveDelta({ x: 0, y: -0.5 }, 0, 3, 0.1);
+    expect(Math.hypot(half.x, half.z)).toBeCloseTo(0.15);
+  });
+
+  it('полное отклонение стика по диагонали не быстрее полной скорости', () => {
+    const full = moveDelta({ x: Math.SQRT1_2, y: -Math.SQRT1_2 }, 0.3, 3, 0.1);
+    expect(Math.hypot(full.x, full.z)).toBeCloseTo(0.3);
+  });
+```
+
+Run: `npm test src/core/movement.test.ts`
+Expected: 10 passed. Восемь прежних тестов обязаны остаться зелёными — они
+используют длины 1 и √2, на которых поведение не меняется.
 
 - [ ] **Step 2: Создать `src/input/touch.ts`**
 
@@ -3595,10 +3647,12 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
   };
 }
 
-/** Подсвечивает кнопку «Взять», когда прицел на цели. */
+/** Подсвечивает кнопку действия, когда прицел на цели. Зовётся каждый кадр,
+ *  поэтому элемент ищется один раз, а не при каждом вызове. */
+let useButtonEl: HTMLButtonElement | null = null;
 export function setUseButtonEnabled(enabled: boolean): void {
-  const button = document.querySelector<HTMLButtonElement>('#btn-use');
-  if (button) button.disabled = !enabled;
+  useButtonEl ??= document.querySelector<HTMLButtonElement>('#btn-use');
+  if (useButtonEl) useButtonEl.disabled = !enabled;
 }
 ```
 
@@ -3666,7 +3720,10 @@ Run: `npm run dev -- --host`
 5. Страница не скроллится и не зумится ни при каких жестах.
 6. Кнопка «Взять» неактивна, пока прицел ни на чём, и загорается при наведении.
 7. Кнопка «Рюкзак» открывает инвентарь, строки нажимаются пальцем без промахов.
-8. В портретной ориентации показывается «Поверни телефон горизонтально».
+8. В портретной ориентации показывается «Поверни телефон горизонтально», а в
+   ландшафтной этого оверлея НЕТ. Если он виден в обоих — игра заблокирована.
+8a. Открыть рюкзак и закрыть его той же кнопкой. Это единственный способ выйти
+   из инвентаря на телефоне: подсказка «I или Tab» пальцем не нажимается.
 9. Кнопки не заезжают под чёлку и под индикатор home.
 9a. Добавить страницу на главный экран (Поделиться → На экран «Домой»), запустить с иконки — адресной строки быть не должно.
 10. Пройти игру целиком с телефона.
@@ -3674,7 +3731,8 @@ Run: `npm run dev -- --host`
 - [ ] **Step 6: Коммит**
 
 ```bash
-git add index.html public/manifest.webmanifest src/input src/main.ts
+git add index.html public/manifest.webmanifest src/input src/core/movement.ts \
+  src/core/movement.test.ts src/main.ts
 git commit -m "Add touch controls, PWA manifest and mobile UI"
 ```
 
