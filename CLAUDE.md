@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Статус: реализация идёт, закрыто 14 задач из 15
+## Статус: все 15 задач закрыты, идёт финальное ревью ветки
 
 Проект строится по плану `docs/superpowers/plans/2026-08-24-bandy-vertical-slice.md`
 на основе спеки `docs/superpowers/specs/2026-08-24-bandy-design.md`. Обе прочитать
@@ -32,8 +32,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Задача 14 закрыта без раундов: экраны ошибок для битого уровня, отсутствующего
 WebGL, исключения в кадре и непойманных ошибок. Тестов 76.
 
-**Следующий шаг.** Задача 15 — деплой на GitHub Pages. Затем финальное ревью всей
-ветки и слияние в `main`.
+Задача 15 закрыта без раундов и с нулём находок: workflow для GitHub Actions и
+README. **Реализация завершена целиком.**
+
+**Следующий шаг.** Финальное ревью всей ветки, затем слияние в `main` и первый
+деплой. Ветка `vertical-slice` ещё не запушена; `main` содержит только документы.
+
+Перед первым пушем в `main` владелец репозитория обязан переключить
+**Settings → Pages → Build and deployment → Source → GitHub Actions**,
+иначе прогон упадёт на шаге `configure-pages`.
 
 Проверку рендера глазами машинно сделать нельзя: под headless софтверный WebGL не
 успевает отдать скриншот за таймаут, а Pointer Lock не выдаётся вовсе. Единственный
