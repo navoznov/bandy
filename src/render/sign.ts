@@ -93,7 +93,12 @@ export function buildExitGlow(level: Level): THREE.Group {
       new THREE.PlaneGeometry(b.x1 - b.x0, ROOM.height),
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
     );
-    wall.position.set((b.x0 + b.x1) / 2, ROOM.height / 2, b.z1 - 0.05);
+    // Стены строятся ВНУТРЬ комнаты (см. colliders.ts), поэтому дальняя стена
+    // занимает z от z1 - 0.2 до z1, а её обращённая к игроку грань — на z1 - 0.2.
+    // Плоскость на z1 - 0.05 оказалась бы ВНУТРИ этого непрозрачного бокса и не
+    // рисовалась бы вовсе: торец «светился» бы только за счёт пересвета серой
+    // стены лампой, то есть случайно.
+    wall.position.set((b.x0 + b.x1) / 2, ROOM.height / 2, b.z1 - ROOM.wallThickness - 0.05);
     wall.rotation.y = Math.PI;
     group.add(wall);
 

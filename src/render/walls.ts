@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { DOOR, ROOM } from '../config';
 import { buildColliders } from '../core/colliders';
-import { roomBounds } from '../core/validate';
+import { doorOnVerticalWall } from '../core/validate';
 import type { Level } from '../core/types';
 import { EDGE_MATERIAL, WALL_MATERIAL } from './materials';
 
@@ -35,10 +35,8 @@ export function buildWalls(level: Level): THREE.Group {
     const [dx, dz] = door.at;
     const room = level.rooms.find((r) => r.id === door.between[0]);
     if (!room) continue;
-    const b = roomBounds(room);
-    const onVerticalWall = Math.abs(dx - b.x0) < 1e-9 || Math.abs(dx - b.x1) < 1e-9;
 
-    if (onVerticalWall) {
+    if (doorOnVerticalWall(door, room)) {
       addBox(group, dx - halfWall, dx + halfWall, dz - halfDoor, dz + halfDoor,
              DOOR.height, ROOM.height);
     } else {
