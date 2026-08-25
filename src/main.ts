@@ -47,6 +47,10 @@ world.on((event) => {
   if (event.kind === 'won') {
     if (document.pointerLockElement) document.exitPointerLock();
     winEl.hidden = false;
+    // Экранное управление лежит ниже засветки, но кнопка рюкзака — выше неё,
+    // и на белом экране победы торчала бы одна она. Игра кончилась, убираем всё.
+    document.querySelector('#touch')?.setAttribute('hidden', '');
+    document.querySelector('#btn-bag')?.setAttribute('hidden', '');
   }
 });
 

@@ -10,9 +10,15 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
   let locked = false;
 
   canvas.addEventListener('click', () => {
+    if (locked) return;
+    // На iPhone Safari Pointer Lock не существует вовсе, и метод там undefined.
+    // Десктопный источник остаётся живым после переключения на тач, а тап
+    // синтезирует click — без этой проверки каждое касание экрана бросало бы
+    // TypeError. Синхронный бросок, catch ниже его не поймал бы.
+    if (typeof canvas.requestPointerLock !== 'function') return;
     // Chrome примерно 1.25 с после Escape не отдаёт захват и реджектит промис.
     // Без catch это всплывает необработанным отказом.
-    if (!locked) canvas.requestPointerLock().catch(() => {});
+    canvas.requestPointerLock().catch(() => {});
   });
 
   document.addEventListener('pointerlockchange', () => {
