@@ -35,6 +35,20 @@ const { scene, interactables, doors } = buildScene(level, world);
 const hud = createHud();
 const hand = createHand();
 const inventoryUi = createInventoryUi(world);
+
+const flashEl = document.querySelector<HTMLElement>('#flash');
+const winEl = document.querySelector<HTMLElement>('#win');
+if (!flashEl || !winEl) throw new Error('Разметка финала не найдена.');
+
+const winTrigger = level.triggers.find((t) => t.effect === 'win');
+
+world.on((event) => {
+  if (event.kind === 'won') {
+    if (document.pointerLockElement) document.exitPointerLock();
+    winEl.hidden = false;
+  }
+});
+
 const raycaster = new THREE.Raycaster();
 raycaster.far = INTERACT_RANGE;
 /** Центр экрана. Вынесен из цикла: в кадре нельзя мусорить аллокациями. */
@@ -133,6 +147,16 @@ renderer.setAnimationLoop((now) => {
     }
   } else {
     hud.setPrompt(null);
+  }
+
+  // Тот же белый оверлей служит и засветкой на подходе, и экраном победы.
+  if (winTrigger) {
+    const [tx, tz, tw, td] = winTrigger.rect;
+    const cx = tx + tw / 2;
+    const cz = tz + td / 2;
+    const distance = Math.hypot(player.x - cx, player.z - cz);
+    const glow = Math.max(0, Math.min(1, (10 - distance) / 9));
+    flashEl.style.opacity = String(world.won ? 1 : glow * 0.9);
   }
 
   renderer.autoClear = true;

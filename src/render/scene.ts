@@ -6,6 +6,7 @@ import type { World } from '../core/world';
 import { makeGridTexture, roomMaterials } from './materials';
 import { buildDoors, type Doors } from './doors';
 import { buildItems } from './items';
+import { buildExitGlow, buildSigns } from './sign';
 import { buildWalls } from './walls';
 
 export interface SceneBuild {
@@ -84,6 +85,9 @@ export function buildScene(level: Level, world: World): SceneBuild {
     interactables[index]?.removeFromParent();
     interactables.splice(index, 1);
   });
+
+  scene.add(buildSigns(level));
+  scene.add(buildExitGlow(level));
 
   return { scene, interactables, doors };
 }

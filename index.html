@@ -34,6 +34,12 @@
                       min-height: 48px; box-sizing: border-box; }
       #inventory li.held { background: rgba(255,212,121,0.22); outline: 2px solid #ffd479; }
       #inventory .hint { opacity: 0.55; font-size: 14px; }
+      #flash { position: fixed; inset: 0; background: #ffffff; opacity: 0;
+               pointer-events: none; z-index: 20; }
+      #win { position: fixed; inset: 0; display: flex; align-items: center;
+             justify-content: center; z-index: 21; color: #1a1a1a;
+             font: 600 32px/1.4 system-ui, sans-serif; }
+      #win[hidden] { display: none; }
     </style>
   </head>
   <body>
@@ -48,6 +54,8 @@
       <p id="inventory-empty">Пусто.</p>
       <p class="hint">I или Tab — закрыть</p>
     </div>
+    <div id="flash"></div>
+    <div id="win" hidden><p>Ты выбрался.</p></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
