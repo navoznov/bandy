@@ -1,6 +1,11 @@
 import * as THREE from 'three';
-import { PLAYER } from './config';
+import { LOOK, MAX_DELTA_SECONDS, PLAYER } from './config';
+import { activeColliders, buildColliders } from './core/colliders';
+import { resolveMove } from './core/collision';
+import { moveDelta } from './core/movement';
+import { World } from './core/world';
 import { loadLevel } from './levels';
+import { createDesktopInput } from './input/desktop';
 import { buildScene } from './render/scene';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#canvas');
@@ -10,6 +15,9 @@ const loaded = loadLevel();
 if (!loaded.ok) throw new Error('Уровень не прошёл валидацию:\n' + loaded.errors.join('\n'));
 const level = loaded.level;
 
+const world = new World(level);
+const allColliders = buildColliders(level);
+
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.shadowMap.enabled = false;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -18,11 +26,15 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
 const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 60);
-camera.position.set(level.spawn.x, PLAYER.eyeHeight, level.spawn.z);
 camera.rotation.order = 'YXZ';
-camera.rotation.y = level.spawn.yaw;
 
 const { scene } = buildScene(level);
+
+const player = { x: level.spawn.x, z: level.spawn.z };
+let yaw = level.spawn.yaw;
+let pitch = 0;
+
+const input = createDesktopInput(canvas);
 
 function resize(): void {
   const width = window.innerWidth;
@@ -34,6 +46,39 @@ function resize(): void {
 window.addEventListener('resize', resize);
 resize();
 
-renderer.setAnimationLoop(() => {
+// Возврат из фона: сбрасываем отсчёт, чтобы первый кадр не принёс многосекундный dt.
+let previous = performance.now();
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) previous = performance.now();
+});
+
+renderer.setAnimationLoop((now) => {
+  // Клампим шаг времени: после сворачивания вкладки он приходит в секундах
+  // и телепортировал бы игрока сквозь стены.
+  const dt = Math.min((now - previous) / 1000, MAX_DELTA_SECONDS);
+  previous = now;
+
+  const state = input.state;
+
+  if (input.isLocked()) {
+    yaw -= state.look.dx * LOOK.sensitivity;
+    pitch -= state.look.dy * LOOK.sensitivity;
+    pitch = Math.max(-LOOK.maxPitch, Math.min(LOOK.maxPitch, pitch));
+
+    const delta = moveDelta(state.move, yaw, PLAYER.speed, dt);
+    if (delta.x !== 0 || delta.z !== 0) {
+      const boxes = activeColliders(allColliders, world.openDoors());
+      const next = resolveMove(player, delta, PLAYER.radius, boxes);
+      player.x = next.x;
+      player.z = next.z;
+    }
+
+    world.checkTriggers(player.x, player.z);
+  }
+
+  camera.position.set(player.x, PLAYER.eyeHeight, player.z);
+  camera.rotation.set(pitch, yaw, 0);
+
   renderer.render(scene, camera);
+  input.consume();
 });
