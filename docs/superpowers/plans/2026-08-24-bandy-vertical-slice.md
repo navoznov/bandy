@@ -2498,10 +2498,13 @@ export function createHud(): Hud {
 
   let flashUntil = 0;
 
+  // `!` здесь обязателен: TypeScript сбрасывает сужение типа на объявлении функции,
+  // потому что оно поднимается и компилятор не знает, что вызов будет после проверки.
+  // На стрелке в `const` сужение сохранилось бы, но читаемость от этого не выигрывает.
   function writePrompt(text: string | null, refusal: boolean): void {
-    prompt.textContent = text ?? '';
-    prompt.classList.toggle('visible', text !== null);
-    prompt.classList.toggle('refusal', refusal);
+    prompt!.textContent = text ?? '';
+    prompt!.classList.toggle('visible', text !== null);
+    prompt!.classList.toggle('refusal', refusal);
   }
 
   /**
@@ -2510,7 +2513,7 @@ export function createHud(): Hud {
    * комнаты и на две секунды прятало бы настоящий отказ.
    */
   function aim(text: string | null, refusal: boolean): void {
-    reticle.classList.toggle('active', text !== null && !refusal);
+    reticle!.classList.toggle('active', text !== null && !refusal);
     if (performance.now() < flashUntil) return;
     writePrompt(text, refusal);
   }
