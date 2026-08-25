@@ -5,6 +5,7 @@ import type { Level } from '../core/types';
 import type { World } from '../core/world';
 import { makeGridTexture, roomMaterials } from './materials';
 import { buildDoors, type Doors } from './doors';
+import { buildItems } from './items';
 import { buildWalls } from './walls';
 
 export interface SceneBuild {
@@ -62,7 +63,10 @@ export function buildScene(level: Level, world: World): SceneBuild {
   const doors = buildDoors(level, world);
   scene.add(doors.group);
 
-  const interactables: THREE.Object3D[] = [...doors.targets];
+  const items = buildItems(level);
+  scene.add(items.group);
+
+  const interactables: THREE.Object3D[] = [...doors.targets, ...items.targets];
 
   // Убрать меш из сцены мало. Raycaster не смотрит ни на `visible`, ни на родителя —
   // только на слои, — и продолжил бы бить по последней мировой матрице удалённого
@@ -71,8 +75,11 @@ export function buildScene(level: Level, world: World): SceneBuild {
   // взаимодействовать» и больше не открывалась. Список целей ведём здесь, чтобы
   // правило было одно и для замков, и для предметов из задачи 11.
   world.on((event) => {
-    if (event.kind !== 'objectDestroyed') return;
-    const index = interactables.findIndex((t) => t.userData['targetId'] === event.object);
+    let gone: string | null = null;
+    if (event.kind === 'objectDestroyed') gone = event.object;
+    if (event.kind === 'itemTaken' || event.kind === 'itemGone') gone = event.item;
+    if (gone === null) return;
+    const index = interactables.findIndex((t) => t.userData['targetId'] === gone);
     if (index === -1) return;
     interactables[index]?.removeFromParent();
     interactables.splice(index, 1);

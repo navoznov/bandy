@@ -7,7 +7,9 @@ import { World } from './core/world';
 import { loadLevel } from './levels';
 import { createDesktopInput } from './input/desktop';
 import { buildScene } from './render/scene';
+import { createHand } from './render/hand';
 import { createHud } from './ui/hud';
+import { createInventoryUi } from './ui/inventory';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#canvas');
 if (!canvas) throw new Error('Канвас не найден.');
@@ -31,6 +33,8 @@ camera.rotation.order = 'YXZ';
 
 const { scene, interactables, doors } = buildScene(level, world);
 const hud = createHud();
+const hand = createHand();
+const inventoryUi = createInventoryUi(world);
 const raycaster = new THREE.Raycaster();
 raycaster.far = INTERACT_RANGE;
 /** Центр экрана. Вынесен из цикла: в кадре нельзя мусорить аллокациями. */
@@ -38,6 +42,10 @@ const SCREEN_CENTER = new THREE.Vector2(0, 0);
 
 world.on((event) => {
   if (event.kind === 'said') hud.flash(event.text);
+});
+
+world.on((event) => {
+  if (event.kind === 'handChanged') hand.setItem(event.item);
 });
 
 const player = { x: level.spawn.x, z: level.spawn.z };
@@ -52,6 +60,7 @@ function resize(): void {
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
+  hand.resize(width / height);
 }
 window.addEventListener('resize', resize);
 resize();
@@ -70,7 +79,13 @@ renderer.setAnimationLoop((now) => {
 
   const state = input.state;
 
-  if (input.isLocked()) {
+  if (state.toggleInventory) {
+    inventoryUi.toggle();
+    if (inventoryUi.isOpen() && document.pointerLockElement) document.exitPointerLock();
+  }
+  const paused = inventoryUi.isOpen();
+
+  if (input.isLocked() && !paused) {
     yaw -= state.look.dx * LOOK.sensitivity;
     pitch -= state.look.dy * LOOK.sensitivity;
     pitch = Math.max(-LOOK.maxPitch, Math.min(LOOK.maxPitch, pitch));
@@ -97,20 +112,28 @@ renderer.setAnimationLoop((now) => {
   camera.updateMatrixWorld();
   doors.group.updateMatrixWorld(true);
 
-  raycaster.setFromCamera(SCREEN_CENTER, camera);
-  const hit = raycaster.intersectObjects(interactables, false)[0];
-  const targetId = hit?.object.userData['targetId'] as string | undefined;
+  if (!paused) {
+    raycaster.setFromCamera(SCREEN_CENTER, camera);
+    const hit = raycaster.intersectObjects(interactables, false)[0];
+    const targetId = hit?.object.userData['targetId'] as string | undefined;
 
-  if (targetId === undefined) {
-    hud.setPrompt(null);
+    if (targetId === undefined) {
+      hud.setPrompt(null);
+    } else {
+      const outcome = world.describe(targetId);
+      if (outcome.ok) hud.setPrompt(outcome.prompt);
+      else hud.setRefusal(outcome.refusal);
+
+      if (state.interact && input.isLocked()) world.interact(targetId);
+    }
   } else {
-    const outcome = world.describe(targetId);
-    if (outcome.ok) hud.setPrompt(outcome.prompt);
-    else hud.setRefusal(outcome.refusal);
-
-    if (state.interact && input.isLocked()) world.interact(targetId);
+    hud.setPrompt(null);
   }
 
+  renderer.autoClear = true;
   renderer.render(scene, camera);
+  renderer.autoClear = false;
+  renderer.clearDepth();
+  renderer.render(hand.scene, hand.camera);
   input.consume();
 });

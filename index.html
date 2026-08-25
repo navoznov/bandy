@@ -22,6 +22,18 @@
                 transition: opacity 0.12s; }
       #prompt.visible { opacity: 1; }
       #prompt.refusal { background: rgba(90,20,20,0.7); }
+      #inventory { position: fixed; inset: 0; display: flex; flex-direction: column;
+                   align-items: center; justify-content: center; gap: 10px;
+                   background: rgba(10,10,14,0.86); color: #f2f2f2;
+                   font: 18px/1.5 system-ui, sans-serif; z-index: 10; }
+      #inventory[hidden] { display: none; }
+      #inventory h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+      #inventory ul { list-style: none; margin: 0; padding: 0; width: min(420px, 84vw); }
+      #inventory li { padding: 14px 16px; margin-bottom: 8px; border-radius: 8px;
+                      background: rgba(255,255,255,0.09); cursor: pointer;
+                      min-height: 48px; box-sizing: border-box; }
+      #inventory li.held { background: rgba(255,212,121,0.22); outline: 2px solid #ffd479; }
+      #inventory .hint { opacity: 0.55; font-size: 14px; }
     </style>
   </head>
   <body>
@@ -29,6 +41,12 @@
     <div id="hud">
       <div id="reticle"></div>
       <div id="prompt"></div>
+    </div>
+    <div id="inventory" hidden>
+      <h2>Инвентарь</h2>
+      <ul id="inventory-list"></ul>
+      <p id="inventory-empty">Пусто.</p>
+      <p class="hint">I или Tab — закрыть</p>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
