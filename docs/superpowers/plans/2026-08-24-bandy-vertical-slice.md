@@ -3283,7 +3283,12 @@ export function buildExitGlow(level: Level): THREE.Group {
       new THREE.PlaneGeometry(b.x1 - b.x0, ROOM.height),
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
     );
-    wall.position.set((b.x0 + b.x1) / 2, ROOM.height / 2, b.z1 - 0.05);
+    // Стены строятся ВНУТРЬ комнаты (см. colliders.ts), поэтому дальняя стена
+    // занимает z от z1 - 0.2 до z1, а её обращённая к игроку грань — на z1 - 0.2.
+    // Плоскость на z1 - 0.05 оказалась бы ВНУТРИ этого непрозрачного бокса и не
+    // рисовалась бы вовсе: торец «светился» бы только за счёт пересвета серой
+    // стены лампой, то есть случайно.
+    wall.position.set((b.x0 + b.x1) / 2, ROOM.height / 2, b.z1 - ROOM.wallThickness - 0.05);
     wall.rotation.y = Math.PI;
     group.add(wall);
 
@@ -3308,8 +3313,10 @@ export function buildExitGlow(level: Level): THREE.Group {
 И в `<style>`:
 
 ```css
+      /* Ниже инвентаря (z-index 10), но выше HUD: засветка — эффект мира,
+         а инвентарь поверх неё остаётся читаемым. Экран победы выше всех. */
       #flash { position: fixed; inset: 0; background: #ffffff; opacity: 0;
-               pointer-events: none; z-index: 20; }
+               pointer-events: none; z-index: 5; }
       #win { position: fixed; inset: 0; display: flex; align-items: center;
              justify-content: center; z-index: 21; color: #1a1a1a;
              font: 600 32px/1.4 system-ui, sans-serif; }
@@ -3358,7 +3365,37 @@ world.on((event) => {
   }
 ```
 
-- [ ] **Step 5: Проверить глазами**
+- [ ] **Step 5: Убрать последнюю копию `onVerticalWall` из `src/render/walls.ts`**
+
+Задача 10 вынесла эту формулу в `doorOnVerticalWall`, но копию в `walls.ts` тогда
+не заметили ни ревью, ни план. Это тот же риск: перемычка над проёмом встала бы не
+на ту стену, если вычисления разойдутся.
+
+Заменить импорт:
+
+```ts
+import { doorOnVerticalWall, roomBounds } from '../core/validate';
+```
+
+И в цикле по дверям убрать локальное вычисление, заменив на вызов:
+
+```ts
+    const room = level.rooms.find((r) => r.id === door.between[0]);
+    if (!room) continue;
+    const b = roomBounds(room);
+
+    if (doorOnVerticalWall(door, room)) {
+```
+
+Переменная `b` в этом цикле остаётся: она больше не нужна для проверки стены,
+но `roomBounds` здесь всё ещё зовётся ради неё — если после правки `b` окажется
+неиспользованной, убери и её, и `roomBounds` из импорта, иначе `noUnusedLocals`
+уронит сборку.
+
+Геометрия обязана остаться прежней. Проверь это численно: число боксов и их
+координаты из `buildWalls(level_01)` до и после правки должны совпасть.
+
+- [ ] **Step 6: Проверить глазами**
 
 Run: `npm run dev`
 
@@ -3372,10 +3409,10 @@ Run: `npm run dev`
 5. При входе в триггер экран становится полностью белым и появляется «Ты выбрался.», курсор освобождается.
 6. Пройти игру целиком от точки появления: ключ, замок, дверь, EXIT, победа.
 
-- [ ] **Step 6: Коммит**
+- [ ] **Step 7: Коммит**
 
 ```bash
-git add index.html src/render/sign.ts src/render/scene.ts src/main.ts
+git add index.html src/render/sign.ts src/render/scene.ts src/render/walls.ts src/main.ts
 git commit -m "Add EXIT sign, final corridor glow and win screen"
 ```
 
