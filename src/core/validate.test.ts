@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { validateLevel } from './validate';
-import type { ItemDef } from './types';
+import { doorOnVerticalWall, validateLevel } from './validate';
+import type { DoorDef, ItemDef, RoomDef } from './types';
 
 const itemDefs: Record<string, ItemDef> = {
   key_brass: { id: 'key_brass', name: 'Латунный ключ', holdable: true },
@@ -111,5 +111,24 @@ describe('validateLevel', () => {
       { kind: 'consume', item: 'key_brass' },
       { kind: 'say', text: 'Щёлк.' },
     ]);
+  });
+});
+
+describe('doorOnVerticalWall', () => {
+  const hall = { id: 'hall', rect: [0, 0, 8, 6], color: '#888', light: 1 } as RoomDef;
+
+  it('дверь на восточной стене комнаты лежит на вертикальной стене', () => {
+    const door = { id: 'd', between: ['hall', 'other'], at: [8, 3] } as DoorDef;
+    expect(doorOnVerticalWall(door, hall)).toBe(true);
+  });
+
+  it('дверь на западной стене тоже', () => {
+    const door = { id: 'd', between: ['hall', 'other'], at: [0, 3] } as DoorDef;
+    expect(doorOnVerticalWall(door, hall)).toBe(true);
+  });
+
+  it('дверь на южной стене лежит на горизонтальной', () => {
+    const door = { id: 'd', between: ['hall', 'other'], at: [4, 6] } as DoorDef;
+    expect(doorOnVerticalWall(door, hall)).toBe(false);
   });
 });

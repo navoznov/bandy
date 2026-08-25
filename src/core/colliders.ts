@@ -1,5 +1,5 @@
 import { DOOR, ROOM } from '../config';
-import { roomBounds } from './validate';
+import { doorOnVerticalWall, roomBounds } from './validate';
 import type { DoorDef, Level } from './types';
 
 export interface Aabb {
@@ -82,8 +82,7 @@ function doorCollider(door: DoorDef, level: Level): Aabb {
   const [dx, dz] = door.at;
   const doorHalf = DOOR.width / 2;
   const room = level.rooms.find((r) => r.id === door.between[0])!;
-  const b = roomBounds(room);
-  const onVerticalWall = Math.abs(dx - b.x0) < 1e-9 || Math.abs(dx - b.x1) < 1e-9;
+  const onVerticalWall = doorOnVerticalWall(door, room);
 
   return onVerticalWall
     ? { x0: dx - half, x1: dx + half, z0: dz - doorHalf, z1: dz + doorHalf, doorId: door.id }

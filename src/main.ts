@@ -91,9 +91,11 @@ renderer.setAnimationLoop((now) => {
 
   doors.update(dt, player);
 
-  // Матрица камеры обновляется внутри render, то есть уже после этого места.
-  // Без явного обновления луч бил бы туда, куда игрок смотрел кадр назад.
+  // Матрицы обновляются внутри render, то есть уже после этого места. Без явного
+  // обновления луч бил бы туда, куда игрок смотрел кадр назад, и по створке в том
+  // положении, в котором она была кадр назад.
   camera.updateMatrixWorld();
+  doors.group.updateMatrixWorld(true);
 
   raycaster.setFromCamera(SCREEN_CENTER, camera);
   const hit = raycaster.intersectObjects(interactables, false)[0];

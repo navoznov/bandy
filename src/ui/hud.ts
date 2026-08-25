@@ -14,20 +14,28 @@ export function createHud(): Hud {
 
   let flashUntil = 0;
 
-  function show(text: string | null, refusal: boolean): void {
-    if (performance.now() < flashUntil) return;
+  function writePrompt(text: string | null, refusal: boolean): void {
     prompt!.textContent = text ?? '';
     prompt!.classList.toggle('visible', text !== null);
     prompt!.classList.toggle('refusal', refusal);
+  }
+
+  /**
+   * Прицел отражает то, на что игрок наведён ПРЯМО СЕЙЧАС, и тост его не трогает:
+   * иначе любое сообщение `say` красило бы прицел активным жёлтым посреди пустой
+   * комнаты и на две секунды прятало бы настоящий отказ.
+   */
+  function aim(text: string | null, refusal: boolean): void {
     reticle!.classList.toggle('active', text !== null && !refusal);
+    if (performance.now() < flashUntil) return;
+    writePrompt(text, refusal);
   }
 
   return {
-    setPrompt: (text) => show(text, false),
-    setRefusal: (text) => show(text, true),
+    setPrompt: (text) => aim(text, false),
+    setRefusal: (text) => aim(text, true),
     flash(text) {
-      flashUntil = 0;
-      show(text, false);
+      writePrompt(text, false);
       flashUntil = performance.now() + 2200;
     },
   };

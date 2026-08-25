@@ -16,6 +16,18 @@ function contains(room: RoomDef, x: number, z: number): boolean {
 const EPS = 1e-9;
 
 /**
+ * Прорезан ли проём в стене, идущей вдоль оси Z (то есть на границе по X).
+ *
+ * Единственное место, где этот факт вычисляется. От него зависят и коллайдер
+ * двери (`core/colliders.ts`), и её полотно с петлёй (`render/doors.ts`).
+ */
+export function doorOnVerticalWall(door: DoorDef, room: RoomDef): boolean {
+  const b = roomBounds(room);
+  const [dx] = door.at;
+  return Math.abs(dx - b.x0) < EPS || Math.abs(dx - b.x1) < EPS;
+}
+
+/**
  * Лежит ли точка двери на стене, общей для двух комнат.
  *
  * Сначала определяется координата, В КОТОРОЙ комнаты соприкасаются, и точка двери

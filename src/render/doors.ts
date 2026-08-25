@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { DOOR } from '../config';
-import { roomBounds } from '../core/validate';
+import { doorOnVerticalWall } from '../core/validate';
 import type { Vec2 } from '../core/collision';
 import type { Level } from '../core/types';
 import type { World } from '../core/world';
@@ -9,6 +9,10 @@ const LEAF_MATERIAL = new THREE.MeshStandardMaterial({ color: 0x6b533c, roughnes
 const LOCK_MATERIAL = new THREE.MeshStandardMaterial({
   color: 0xb8a03a, roughness: 0.4, metalness: 0.6,
 });
+// Размеры одинаковы у всех дверей и всех замков, поэтому геометрия общая — как
+// и материалы выше. Из-за этого её нельзя освобождать при уничтожении одной цели.
+const LEAF_GEOMETRY = new THREE.BoxGeometry(DOOR.width, DOOR.height, 0.06);
+const LOCK_GEOMETRY = new THREE.BoxGeometry(0.14, 0.2, 0.08);
 
 interface Leaf {
   pivot: THREE.Group;
@@ -50,8 +54,7 @@ export function buildDoors(level: Level, world: World): Doors {
     const [dx, dz] = door.at;
     const room = level.rooms.find((r) => r.id === door.between[0]);
     if (!room) continue;
-    const b = roomBounds(room);
-    const onVerticalWall = Math.abs(dx - b.x0) < 1e-9 || Math.abs(dx - b.x1) < 1e-9;
+    const onVerticalWall = doorOnVerticalWall(door, room);
 
     // Петля у одного края проёма, полотно уходит от неё.
     const pivot = new THREE.Group();
@@ -66,8 +69,7 @@ export function buildDoors(level: Level, world: World): Doors {
     const closedAngle = onVerticalWall ? -Math.PI / 2 : 0;
     pivot.rotation.y = closedAngle;
 
-    const geometry = new THREE.BoxGeometry(DOOR.width, DOOR.height, 0.06);
-    const leaf = new THREE.Mesh(geometry, LEAF_MATERIAL);
+    const leaf = new THREE.Mesh(LEAF_GEOMETRY, LEAF_MATERIAL);
     leaf.position.set(DOOR.width / 2, DOOR.height / 2, 0);
     leaf.userData['targetId'] = door.id;
     pivot.add(leaf);
@@ -85,7 +87,7 @@ export function buildDoors(level: Level, world: World): Doors {
     });
 
     if (door.lock) {
-      const lock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.08), LOCK_MATERIAL);
+      const lock = new THREE.Mesh(LOCK_GEOMETRY, LOCK_MATERIAL);
       lock.position.set(DOOR.width * 0.82, 1.15, 0.07);
       lock.userData['targetId'] = door.lock;
       pivot.add(lock);
