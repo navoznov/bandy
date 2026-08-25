@@ -3443,18 +3443,16 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
 ```html
     <div id="touch" hidden>
       <div id="stick"><div id="stick-knob"></div></div>
-      <button id="btn-use" type="button">Действие</button>
-      <button id="btn-bag" type="button">Рюкзак</button>
+      <button id="btn-use" class="touch-btn" type="button">Действие</button>
     </div>
+    <button id="btn-bag" class="touch-btn" type="button" hidden>Рюкзак</button>
     <div id="rotate" hidden><p>Поверни телефон горизонтально</p></div>
 ```
 
 И в `<style>`:
 
 ```css
-      /* Без z-index намеренно: тогда позиционированные потомки участвуют в корневом
-         контексте наложения, и кнопке «Рюкзак» можно поднять z-index выше инвентаря. */
-      #touch { position: fixed; inset: 0; pointer-events: none; }
+      #touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
       #touch[hidden] { display: none; }
       #stick { position: absolute; width: 120px; height: 120px; border-radius: 50%;
                border: 2px solid rgba(255,255,255,0.3); opacity: 0; }
@@ -3462,15 +3460,21 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
       #stick-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px;
                     margin: -26px 0 0 -26px; border-radius: 50%;
                     background: rgba(255,255,255,0.45); }
-      #touch button { position: absolute; pointer-events: auto; border: none;
-                      border-radius: 12px; background: rgba(255,255,255,0.18);
-                      color: #fff; font: 600 16px system-ui, sans-serif;
-                      min-width: 96px; min-height: 64px; }
-      #touch button:disabled { opacity: 0.35; }
+      /* Кнопки позиционируются от вьюпорта, поэтому им безразлично, лежат они
+         внутри #touch или рядом с ним. Для «Рюкзака» это решающее обстоятельство. */
+      .touch-btn { position: fixed; pointer-events: auto; border: none;
+                   border-radius: 12px; background: rgba(255,255,255,0.18);
+                   color: #fff; font: 600 16px system-ui, sans-serif;
+                   min-width: 96px; min-height: 64px; }
+      .touch-btn[hidden] { display: none; }
+      .touch-btn:disabled { opacity: 0.35; }
       #btn-use { right: calc(20px + env(safe-area-inset-right));
                  bottom: calc(28px + env(safe-area-inset-bottom)); }
-      /* Выше инвентаря (10): на телефоне это единственный способ его закрыть.
-         Подсказка «I или Tab» внутри инвентаря пальцем не нажимается. */
+      /* Лежит СНАРУЖИ #touch и выше инвентаря (10). Внутри #touch это не работает:
+         `position: fixed` создаёт контекст наложения ВСЕГДА, независимо от z-index,
+         поэтому z-index потомка не может перебить соседний #inventory. Проверено
+         замером elementFromPoint на отдельном стенде. А выйти из инвентаря на
+         телефоне больше нечем: подсказка «I или Tab» пальцем не нажимается. */
       #btn-bag { right: calc(20px + env(safe-area-inset-right));
                  top: calc(20px + env(safe-area-inset-top)); min-height: 48px;
                  z-index: 11; }
@@ -3576,6 +3580,8 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
     throw new Error('Разметка тач-управления не найдена.');
   }
   panel.hidden = false;
+  // Кнопка рюкзака живёт вне #touch, поэтому показывается отдельно.
+  bagButton.hidden = false;
 
   let stickPointer: number | null = null;
   let stickOrigin = { x: 0, y: 0 };
@@ -3619,7 +3625,9 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
     }
   });
 
-  function release(event: PointerEvent): void {
+  // Стрелка в const, а не объявление функции: TypeScript сбрасывает сужение типа
+  // на поднимаемом объявлении, и `stick`/`knob` снова стали бы возможно-null.
+  const release = (event: PointerEvent): void => {
     if (event.pointerId === stickPointer) {
       stickPointer = null;
       state.move.x = 0;
@@ -3628,7 +3636,7 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
       stick.classList.remove('active');
     }
     if (event.pointerId === lookPointer) lookPointer = null;
-  }
+  };
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
 
