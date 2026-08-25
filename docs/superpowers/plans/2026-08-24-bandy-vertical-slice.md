@@ -3792,7 +3792,8 @@ git commit -m "Add touch controls, PWA manifest and mobile UI"
 **Files:**
 - Create: `src/ui/fatal.ts`
 - Modify: `index.html` — контейнер экрана ошибки
-- Modify: `src/main.ts` — обернуть загрузку и цикл
+- Modify: `src/main.ts` — обернуть загрузку и цикл, поставить глобальные ловушки
+- Modify: `src/input/desktop.ts` — перестать глушить отказ захвата молча
 
 **Interfaces:**
 - Consumes: результат `loadLevel()` из Task 8
@@ -3875,7 +3876,11 @@ if (!loaded.ok) {
 const level = loaded.level;
 ```
 
-Обернуть тело игрового цикла. Найти `renderer.setAnimationLoop((now) => {` и превратить в:
+Обернуть тело игрового цикла. **Тело обязано остаться посимвольно прежним**, меняется
+только отступ. После правки сверь `git diff -w` — он должен показать только добавленные
+строки try/catch, и ни одной изменённой строки внутри тела.
+
+Найти `renderer.setAnimationLoop((now) => {` и превратить в:
 
 ```ts
 renderer.setAnimationLoop((now) => {
@@ -3892,9 +3897,52 @@ renderer.setAnimationLoop((now) => {
 });
 ```
 
+- [ ] **Step 3b: Поставить глобальные ловушки в `src/main.ts`**
+
+try/catch вокруг цикла закрывает только цикл. Ошибка в обработчике DOM-события идёт
+мимо: клик по строке инвентаря зовёт `setHeld`, а тот через подписки дёргает
+перерисовку списка и предмет в руке — всё это вне кадра. Туда же уходит исключение
+из самого `new THREE.WebGLRenderer`, если оно случится вопреки проверке.
+
+Добавить сразу после импортов, ДО всего остального кода:
+
+```ts
+window.addEventListener('error', (event) => {
+  showFatal('Непойманная ошибка', [
+    event.message,
+    event.error instanceof Error && event.error.stack ? event.error.stack : '',
+  ]);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  showFatal('Непойманный отказ промиса', [String(event.reason)]);
+});
+```
+
+Повторный вызов `showFatal` безвреден: у неё стоит флаг `shown`. Поэтому намеренные
+`throw` после показа экрана валидации не перерисуют его поверх.
+
+- [ ] **Step 3c: Перестать глушить отказ захвата курсора в `src/input/desktop.ts`**
+
+Замечание запарковано с задачи 9: `.catch(() => {})` глушит ЛЮБОЙ отказ, а не только
+штатный кулдаун Chrome. Во фрейме с запретом по permissions-policy игрок кликал бы в
+пустоту без единого следа в консоли. Задача про обработку ошибок — место это закрыть.
+
+```ts
+    canvas.requestPointerLock().catch((error: unknown) => {
+      // Отказ бывает штатным: Chrome примерно 1.25 с после Escape захват не отдаёт.
+      // Но молчать обо всех подряд нельзя — запрет из permissions-policy выглядел бы
+      // как неработающий клик без объяснений.
+      console.warn('Захват курсора не удался:', error);
+    });
+```
+
+Экран ошибки здесь НЕ показывается намеренно: это не фатальный случай, игра остаётся
+работоспособной, а на телефоне захвата нет вовсе и он не нужен.
+
 - [ ] **Step 4: Проверить все три экрана**
 
-1. **Ошибка валидации.** Временно испортить `src/levels/level_01.json`: заменить `"between": ["hall", "corridor_a"]` на `"between": ["hall", "nope"]`. Обновить страницу — должен появиться экран со списком ошибок, включая упоминание `nope`. Вернуть файл как было.
+1. **Ошибка валидации.** Временно испортить `src/levels/level_01.json`: заменить `"between": ["hall", "corridor_a"]` на `"between": ["hall", "nope"]`. Обновить страницу — должен появиться экран со списком ошибок, включая упоминание `nope`. Затем вернуть файл: `git checkout src/levels/level_01.json`, и **обязательно** убедиться через `git status`, что дерево чистое. Испорченный уровень, уехавший в коммит, ломает игру целиком.
 2. **Ошибка в цикле.** Временно добавить в тело цикла `if (now > 2000) throw new Error('проверка');`. Через две секунды должен появиться экран ошибки, а браузер не должен виснуть. Убрать строку.
 3. **WebGL.** Проверяется чтением кода: убедиться, что `hasWebGl()` вызывается до создания рендерера.
 
@@ -3906,7 +3954,7 @@ Expected: PASS, все тесты зелёные.
 - [ ] **Step 6: Коммит**
 
 ```bash
-git add index.html src/ui/fatal.ts src/main.ts
+git add index.html src/ui/fatal.ts src/main.ts src/input/desktop.ts
 git commit -m "Add fatal error screens for validation, WebGL and loop failures"
 ```
 
