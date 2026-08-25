@@ -46,9 +46,16 @@
       #win[hidden] { display: none; }
       #touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
       #touch[hidden] { display: none; }
+      /* Стик виден и в покое, иначе игрок не догадается, что левая половина
+         экрана вообще управляет движением. В покое он лежит в левом нижнем углу,
+         при касании прыгает под палец (тогда работают инлайновые left/top,
+         а bottom снимается). */
       #stick { position: absolute; width: 120px; height: 120px; border-radius: 50%;
-               border: 2px solid rgba(255,255,255,0.3); opacity: 0; }
-      #stick.active { opacity: 1; }
+               border: 2px solid rgba(255,255,255,0.3); opacity: 0.4;
+               left: calc(28px + env(safe-area-inset-left)); top: auto;
+               bottom: calc(28px + env(safe-area-inset-bottom));
+               transition: opacity 0.12s; }
+      #stick.active { opacity: 1; bottom: auto; }
       #stick-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px;
                     margin: -26px 0 0 -26px; border-radius: 50%;
                     background: rgba(255,255,255,0.45); }

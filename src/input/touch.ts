@@ -73,6 +73,9 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
       state.move.y = 0;
       knob.style.transform = '';
       stick.classList.remove('active');
+      // Снимаем инлайновую позицию — стик возвращается в угол, к правилам CSS.
+      stick.style.left = '';
+      stick.style.top = '';
     }
     if (event.pointerId === lookPointer) lookPointer = null;
   };

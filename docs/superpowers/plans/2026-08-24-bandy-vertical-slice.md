@@ -3454,9 +3454,17 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
 ```css
       #touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
       #touch[hidden] { display: none; }
+      /* Стик виден и в покое. С opacity: 0 на экране не остаётся НИЧЕГО, что
+         подсказало бы игроку, где управление движением, — первый же живой
+         тестировщик не смог сдвинуться с места и спросил, как ходить.
+         В покое стик лежит в левом нижнем углу, при касании прыгает под палец
+         (работают инлайновые left/top, а bottom снимается классом active). */
       #stick { position: absolute; width: 120px; height: 120px; border-radius: 50%;
-               border: 2px solid rgba(255,255,255,0.3); opacity: 0; }
-      #stick.active { opacity: 1; }
+               border: 2px solid rgba(255,255,255,0.3); opacity: 0.4;
+               left: calc(28px + env(safe-area-inset-left)); top: auto;
+               bottom: calc(28px + env(safe-area-inset-bottom));
+               transition: opacity 0.12s; }
+      #stick.active { opacity: 1; bottom: auto; }
       #stick-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px;
                     margin: -26px 0 0 -26px; border-radius: 50%;
                     background: rgba(255,255,255,0.45); }
@@ -3634,6 +3642,9 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
       state.move.y = 0;
       knob.style.transform = '';
       stick.classList.remove('active');
+      // Снимаем инлайновую позицию — стик возвращается в угол, к правилам CSS.
+      stick.style.left = '';
+      stick.style.top = '';
     }
     if (event.pointerId === lookPointer) lookPointer = null;
   };
