@@ -2112,12 +2112,14 @@ git commit -m "Add level data and room geometry rendering"
 ### Task 9: Игровой цикл, управление с клавиатуры и мыши, движение с коллизиями
 
 **Files:**
-- Create: `src/input/types.ts`, `src/input/desktop.ts`
+- Create: `src/input/types.ts`, `src/input/desktop.ts`, `src/core/movement.ts`
+- Test: `src/core/movement.test.ts`
 - Modify: `src/main.ts` — заменить статичную камеру на игровой цикл
 
 **Interfaces:**
 - Consumes: `resolveMove` из Task 4, `activeColliders` из Task 3, `World` из Task 6, `LOOK`/`PLAYER`/`MAX_DELTA_SECONDS` из Task 1
 - Produces:
+  - `moveDelta(move: { x: number; y: number }, yaw: number, speed: number, dt: number): Vec2` — Task 13 зовёт её же для виртуального стика
   - `interface InputState { move: { x: number; y: number }; look: { dx: number; dy: number }; interact: boolean; toggleInventory: boolean }`
   - `interface InputSource { state: InputState; consume(): void; isLocked(): boolean }`
   - `createDesktopInput(canvas: HTMLCanvasElement): InputSource`
@@ -2166,7 +2168,9 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
   let locked = false;
 
   canvas.addEventListener('click', () => {
-    if (!locked) void canvas.requestPointerLock();
+    // Chrome примерно 1.25 с после Escape не отдаёт захват и реджектит промис.
+    // Без catch это всплывает необработанным отказом.
+    if (!locked) canvas.requestPointerLock().catch(() => {});
   });
 
   document.addEventListener('pointerlockchange', () => {
@@ -2214,13 +2218,114 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
 
 Обрати внимание: `consume` пересчитывает `move` из набора зажатых клавиш и обнуляет одноразовые сигналы. Цикл читает `state` до вызова `consume`, поэтому порядок в кадре важен: сначала обновить `move`, потом использовать, потом сбросить. Ниже это учтено.
 
-- [ ] **Step 3: Переписать `src/main.ts` на игровой цикл**
+- [ ] **Step 3: Создать `src/core/movement.ts`**
+
+Перевод «куда нажали» в «куда сместиться» — чистая математика, и место ей в `core`,
+а не внутри игрового цикла. Причина не в красоте: знак здесь легко перепутать, а
+внутри `main.ts` такую ошибку ловят только ногами. Вторая причина — Task 13:
+виртуальный стик даёт то же самое `move`, и конвертация должна быть одна на двоих.
+
+```ts
+import type { Vec2 } from './collision';
+
+/**
+ * Переводит намерение игрока в смещение в мире за кадр.
+ *
+ * `move` задан в экранных осях: x = +1 вправо (D), y = -1 вперёд (W).
+ * Камера в мире смотрит в (-sin yaw, -cos yaw) — по той же оси, что и move.y,
+ * поэтому знак при move.y НЕ переворачивается. Проверено против three.js.
+ *
+ * Диагональ нормируется: W+D даёт ровно ту же длину шага, что и один W.
+ */
+export function moveDelta(
+  move: { x: number; y: number },
+  yaw: number,
+  speed: number,
+  dt: number,
+): Vec2 {
+  const length = Math.hypot(move.x, move.y);
+  if (length === 0) return { x: 0, z: 0 };
+  const step = (speed * dt) / length;
+  return {
+    x: (Math.sin(yaw) * move.y + Math.cos(yaw) * move.x) * step,
+    z: (Math.cos(yaw) * move.y - Math.sin(yaw) * move.x) * step,
+  };
+}
+```
+
+- [ ] **Step 4: Написать тесты `src/core/movement.test.ts` и прогнать их**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { moveDelta } from './movement';
+
+const W = { x: 0, y: -1 };
+const S = { x: 0, y: 1 };
+const A = { x: -1, y: 0 };
+const D = { x: 1, y: 0 };
+
+describe('moveDelta', () => {
+  it('при yaw = 0 W ведёт в -Z', () => {
+    const d = moveDelta(W, 0, 3, 0.1);
+    expect(d.x).toBeCloseTo(0);
+    expect(d.z).toBeCloseTo(-0.3);
+  });
+
+  it('при yaw = 0 D ведёт в +X', () => {
+    const d = moveDelta(D, 0, 3, 0.1);
+    expect(d.x).toBeCloseTo(0.3);
+    expect(d.z).toBeCloseTo(0);
+  });
+
+  it('поворот на 90 градусов вправо разворачивает W в +X', () => {
+    const d = moveDelta(W, -Math.PI / 2, 3, 0.1);
+    expect(d.x).toBeCloseTo(0.3);
+    expect(d.z).toBeCloseTo(0);
+  });
+
+  it('S идёт ровно против W при произвольном yaw', () => {
+    const forward = moveDelta(W, 0.7, 3, 0.1);
+    const back = moveDelta(S, 0.7, 3, 0.1);
+    expect(back.x).toBeCloseTo(-forward.x);
+    expect(back.z).toBeCloseTo(-forward.z);
+  });
+
+  it('A идёт ровно против D при произвольном yaw', () => {
+    const right = moveDelta(D, 0.7, 3, 0.1);
+    const left = moveDelta(A, 0.7, 3, 0.1);
+    expect(left.x).toBeCloseTo(-right.x);
+    expect(left.z).toBeCloseTo(-right.z);
+  });
+
+  it('вперёд и вбок перпендикулярны', () => {
+    const f = moveDelta(W, 1.1, 3, 0.1);
+    const r = moveDelta(D, 1.1, 3, 0.1);
+    expect(f.x * r.x + f.z * r.z).toBeCloseTo(0);
+  });
+
+  it('диагональ не быстрее прямой ходьбы', () => {
+    const straight = moveDelta(W, 0.4, 3, 0.1);
+    const diagonal = moveDelta({ x: 1, y: -1 }, 0.4, 3, 0.1);
+    expect(Math.hypot(diagonal.x, diagonal.z)).toBeCloseTo(Math.hypot(straight.x, straight.z));
+  });
+
+  it('без нажатий смещения нет', () => {
+    expect(moveDelta({ x: 0, y: 0 }, 1.2, 3, 0.1)).toEqual({ x: 0, z: 0 });
+  });
+});
+```
+
+Run: `npm test src/core/movement.test.ts`
+Expected: 8 passed.
+
+- [ ] **Step 5: Переписать `src/main.ts` на игровой цикл**
 
 ```ts
 import * as THREE from 'three';
 import { LOOK, MAX_DELTA_SECONDS, PLAYER } from './config';
 import { activeColliders, buildColliders } from './core/colliders';
 import { resolveMove } from './core/collision';
+import { moveDelta } from './core/movement';
 import { World } from './core/world';
 import { loadLevel } from './levels';
 import { createDesktopInput } from './input/desktop';
@@ -2283,15 +2388,10 @@ renderer.setAnimationLoop((now) => {
     pitch -= state.look.dy * LOOK.sensitivity;
     pitch = Math.max(-LOOK.maxPitch, Math.min(LOOK.maxPitch, pitch));
 
-    const forward = state.move.y;
-    const strafe = state.move.x;
-    const length = Math.hypot(forward, strafe);
-    if (length > 0) {
-      const step = (PLAYER.speed * dt) / length;
-      const dx = (Math.sin(yaw) * -forward + Math.cos(yaw) * strafe) * step;
-      const dz = (Math.cos(yaw) * -forward - Math.sin(yaw) * strafe) * step;
+    const delta = moveDelta(state.move, yaw, PLAYER.speed, dt);
+    if (delta.x !== 0 || delta.z !== 0) {
       const boxes = activeColliders(allColliders, world.openDoors());
-      const next = resolveMove(player, { x: dx, z: dz }, PLAYER.radius, boxes);
+      const next = resolveMove(player, delta, PLAYER.radius, boxes);
       player.x = next.x;
       player.z = next.z;
     }
@@ -2307,7 +2407,7 @@ renderer.setAnimationLoop((now) => {
 });
 ```
 
-- [ ] **Step 4: Проверить глазами и ногами**
+- [ ] **Step 6: Проверить глазами и ногами**
 
 Run: `npm run dev`
 
@@ -2320,10 +2420,10 @@ Run: `npm run dev`
 6. `Escape` отпускает курсор, движение останавливается.
 7. Свернуть вкладку на десять секунд, вернуться — игрока не выбросило сквозь стены и не дёрнуло вперёд.
 
-- [ ] **Step 5: Коммит**
+- [ ] **Step 7: Коммит**
 
 ```bash
-git add src/input src/main.ts
+git add src/input src/core/movement.ts src/core/movement.test.ts src/main.ts
 git commit -m "Add game loop with keyboard and mouse controls"
 ```
 
