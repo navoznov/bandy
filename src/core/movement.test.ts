@@ -54,4 +54,14 @@ describe('moveDelta', () => {
   it('без нажатий смещения нет', () => {
     expect(moveDelta({ x: 0, y: 0 }, 1.2, 3, 0.1)).toEqual({ x: 0, z: 0 });
   });
+
+  it('половинное отклонение стика даёт половину скорости', () => {
+    const half = moveDelta({ x: 0, y: -0.5 }, 0, 3, 0.1);
+    expect(Math.hypot(half.x, half.z)).toBeCloseTo(0.15);
+  });
+
+  it('полное отклонение стика по диагонали не быстрее полной скорости', () => {
+    const full = moveDelta({ x: Math.SQRT1_2, y: -Math.SQRT1_2 }, 0.3, 3, 0.1);
+    expect(Math.hypot(full.x, full.z)).toBeCloseTo(0.3);
+  });
 });

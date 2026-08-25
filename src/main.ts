@@ -5,7 +5,8 @@ import { resolveMove } from './core/collision';
 import { moveDelta } from './core/movement';
 import { World } from './core/world';
 import { loadLevel } from './levels';
-import { createDesktopInput } from './input/desktop';
+import { createInput } from './input';
+import { setUseButtonEnabled } from './input/touch';
 import { buildScene } from './render/scene';
 import { createHand } from './render/hand';
 import { createHud } from './ui/hud';
@@ -66,7 +67,7 @@ const player = { x: level.spawn.x, z: level.spawn.z };
 let yaw = level.spawn.yaw;
 let pitch = 0;
 
-const input = createDesktopInput(canvas);
+const input = createInput(canvas);
 
 function resize(): void {
   const width = window.innerWidth;
@@ -135,6 +136,7 @@ renderer.setAnimationLoop((now) => {
     raycaster.setFromCamera(SCREEN_CENTER, camera);
     const hit = raycaster.intersectObjects(interactables, false)[0];
     const targetId = hit?.object.userData['targetId'] as string | undefined;
+    setUseButtonEnabled(targetId !== undefined);
 
     if (targetId === undefined) {
       hud.setPrompt(null);

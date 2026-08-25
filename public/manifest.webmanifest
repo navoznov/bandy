@@ -1,0 +1,9 @@
+{
+  "name": "Bandy",
+  "short_name": "Bandy",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0d0d10",
+  "theme_color": "#0d0d10",
+  "start_url": "."
+}
