@@ -55,7 +55,10 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
 
   return {
     state,
+    scheme: 'desktop',
     isLocked: () => locked,
+    // Экранной кнопки «Действие» на десктопе нет — подсвечивать нечего.
+    setInteractAvailable() {},
     consume() {
       state.move.x = axis('KeyA', 'KeyD');
       state.move.y = axis('KeyW', 'KeyS');

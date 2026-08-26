@@ -9,12 +9,26 @@ export interface InputState {
   toggleInventory: boolean;
 }
 
+/** Какой схемой играют прямо сейчас. Меняется по факту последнего события ввода. */
+export type InputScheme = 'desktop' | 'touch';
+
 export interface InputSource {
   readonly state: InputState;
+  /**
+   * Активная схема. Нужна только тексту подсказок: на десктопе игрок должен
+   * прочитать имя клавиши, на телефоне — увидеть кнопку. Игровая логика от неё
+   * не зависит и знать про устройство по-прежнему не должна.
+   */
+  readonly scheme: InputScheme;
   /** Сбрасывает накопленные за кадр дельты и фронты нажатий. Вызывается в конце кадра. */
   consume(): void;
   /** Захвачено ли управление. Пока не захвачено, игрок не двигается. */
   isLocked(): boolean;
+  /**
+   * Есть ли под прицелом цель. Тач-схема гасит и зажигает этим кнопку «Действие»,
+   * десктопная не делает ничего. Зовётся каждый кадр.
+   */
+  setInteractAvailable(available: boolean): void;
 }
 
 export function emptyState(): InputState {

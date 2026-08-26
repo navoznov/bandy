@@ -6,7 +6,6 @@ import { moveDelta } from './core/movement';
 import { World } from './core/world';
 import { loadLevel } from './levels';
 import { createInput } from './input';
-import { setUseButtonEnabled } from './input/touch';
 import { buildScene } from './render/scene';
 import { createHand } from './render/hand';
 import { createHud } from './ui/hud';
@@ -174,7 +173,7 @@ renderer.setAnimationLoop((now) => {
       raycaster.setFromCamera(SCREEN_CENTER, camera);
       const hit = raycaster.intersectObjects(interactables, false)[0];
       const targetId = hit?.object.userData['targetId'] as string | undefined;
-      setUseButtonEnabled(targetId !== undefined);
+      input.setInteractAvailable(targetId !== undefined);
 
       if (targetId === undefined) {
         hud.setPrompt(null);

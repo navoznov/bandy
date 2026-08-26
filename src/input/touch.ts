@@ -3,6 +3,20 @@ import { emptyState, type InputSource, type InputState } from './types';
 const STICK_RADIUS = 60;
 
 /**
+ * Показывает экранное управление. Зовётся дважды и намеренно идемпотентна:
+ * один раз по возможности экрана (`pointer: coarse`) ещё до первого касания —
+ * иначе на первом экране телефона нет ни стика, ни кнопок, ни подсказки про
+ * ландшафт, и игрок не понимает, как ходить, — и второй раз при создании
+ * тач-источника, на случай устройства, которое `pointer: coarse` не заявило.
+ */
+export function showTouchUi(): void {
+  document.querySelector('#touch')?.removeAttribute('hidden');
+  // Кнопка рюкзака и оверлей «поверни телефон» лежат вне #touch.
+  document.querySelector('#btn-bag')?.removeAttribute('hidden');
+  document.querySelector('#rotate')?.removeAttribute('hidden');
+}
+
+/**
  * Левая половина экрана — плавающий стик, правая — свайп обзора.
  * Каждый палец отслеживается по pointerId: иначе второй палец перехватит
  * события первого и управление начнёт залипать.
@@ -10,17 +24,14 @@ const STICK_RADIUS = 60;
 export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
   const state: InputState = emptyState();
 
-  const panel = document.querySelector<HTMLElement>('#touch');
   const stick = document.querySelector<HTMLElement>('#stick');
   const knob = document.querySelector<HTMLElement>('#stick-knob');
   const useButton = document.querySelector<HTMLButtonElement>('#btn-use');
   const bagButton = document.querySelector<HTMLButtonElement>('#btn-bag');
-  if (!panel || !stick || !knob || !useButton || !bagButton) {
+  if (!stick || !knob || !useButton || !bagButton) {
     throw new Error('Разметка тач-управления не найдена.');
   }
-  panel.hidden = false;
-  // Кнопка рюкзака живёт вне #touch, поэтому показывается отдельно.
-  bagButton.hidden = false;
+  showTouchUi();
 
   let stickPointer: number | null = null;
   let stickOrigin = { x: 0, y: 0 };
@@ -87,7 +98,11 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
 
   return {
     state,
+    scheme: 'touch',
     isLocked: () => true, // на телефоне захватывать нечего, управление активно всегда
+    // Кнопка найдена при создании источника, поэтому в кадре нет ни поиска
+    // по документу, ни ленивого кэша под него.
+    setInteractAvailable(available) { useButton.disabled = !available; },
     consume() {
       state.look.dx = 0;
       state.look.dy = 0;
@@ -95,12 +110,4 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
       state.toggleInventory = false;
     },
   };
-}
-
-/** Подсвечивает кнопку действия, когда прицел на цели. Зовётся каждый кадр,
- *  поэтому элемент ищется один раз, а не при каждом вызове. */
-let useButtonEl: HTMLButtonElement | null = null;
-export function setUseButtonEnabled(enabled: boolean): void {
-  useButtonEl ??= document.querySelector<HTMLButtonElement>('#btn-use');
-  if (useButtonEl) useButtonEl.disabled = !enabled;
 }
