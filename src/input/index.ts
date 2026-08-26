@@ -42,9 +42,9 @@ export function nextScheme(current: InputScheme, signal: SchemeSignal): InputSch
  * случайное касание навсегда выключало бы клавиатуру и мышь.
  */
 export function createInput(canvas: HTMLCanvasElement): InputSource {
-  const desktop = createDesktopInput(canvas);
   let touch: InputSource | null = null;
   let scheme: InputScheme = 'desktop';
+  const desktop = createDesktopInput(canvas, () => scheme === 'desktop');
 
   // Экранное управление показывается по возможности экрана, а не по факту
   // касания: иначе на первом экране телефона нет ни стика, ни кнопок, ни
@@ -64,7 +64,13 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
       touch.consume();
       if (!isCoarsePointer()) hideTouchUi();
     }
-    if (next === 'touch') showTouchUi();
+    if (next === 'touch') {
+      showTouchUi();
+      // Захват мог быть выдан до первого касания — на Android он существует, и
+      // тап синтезирует click. Под захватом координаты указателя заморожены, и
+      // тач-схема получала бы все касания в точку (0, 0). Снимаем.
+      if (document.pointerLockElement) document.exitPointerLock();
+    }
     scheme = next;
   }
 

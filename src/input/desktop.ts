@@ -4,7 +4,19 @@ import { emptyState, type InputSource, type InputState } from './types';
  * Все хоткеи читаются через event.code — это физическая клавиша.
  * event.key сломался бы при переключении раскладки.
  */
-export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
+/**
+ * `canLock` спрашивают перед каждым запросом захвата курсора. Проверять наличие
+ * метода недостаточно: Chrome на Android его имеет и захват выдаёт, а тап
+ * синтезирует click — и телефон уходил под захват, где координаты указателя
+ * заморожены и все касания приходят в точку (0, 0). Стик уезжал в угол, свайпы
+ * переставали шевелить камеру. Решает это не desktop.ts: захват курсора нужен
+ * ровно тогда, когда активна десктопная схема, а знает об этом только тот, кто
+ * схемы и переключает.
+ */
+export function createDesktopInput(
+  canvas: HTMLCanvasElement,
+  canLock: () => boolean,
+): InputSource {
   const state: InputState = emptyState();
   const pressed = new Set<string>();
   let locked = false;
@@ -16,6 +28,7 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
 
   function requestLock(): void {
     if (locked) return;
+    if (!canLock()) return;
     // На iPhone Safari Pointer Lock не существует вовсе, и метод там undefined.
     // Десктопный источник остаётся живым после переключения на тач, а тап
     // синтезирует click — без этой проверки каждое касание экрана бросало бы
