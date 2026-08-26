@@ -1,6 +1,6 @@
 import type { InputScheme, InputSource } from './types';
 import { createDesktopInput } from './desktop';
-import { createTouchInput, showTouchUi } from './touch';
+import { createTouchInput, hideTouchUi, showTouchUi } from './touch';
 
 export type { InputSource, InputState, InputScheme } from './types';
 
@@ -53,8 +53,18 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
 
   function switchTo(signal: SchemeSignal): void {
     const next = nextScheme(scheme, signal);
+    if (next === scheme) return;
     // Тач-источник создаётся лениво: на машине без тачскрина он не нужен вовсе.
     if (next === 'touch') touch ??= createTouchInput(canvas);
+    // Вернулись к мыши и клавиатуре — экранное управление убираем. Оно не только
+    // мешает смотреть: клик мышью по кнопке «Действие» взводит `interact` в
+    // источнике, чей `consume()` уже не зовётся, и флаг сработал бы позже, при
+    // следующем касании. `consume()` гасит такой залипший флаг.
+    if (next === 'desktop' && touch) {
+      touch.consume();
+      if (!isCoarsePointer()) hideTouchUi();
+    }
+    if (next === 'touch') showTouchUi();
     scheme = next;
   }
 

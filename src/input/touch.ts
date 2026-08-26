@@ -16,6 +16,13 @@ export function showTouchUi(): void {
   document.querySelector('#rotate')?.removeAttribute('hidden');
 }
 
+/** Прячет экранное управление: играют мышью, стик и кнопки только мешают. */
+export function hideTouchUi(): void {
+  document.querySelector('#touch')?.setAttribute('hidden', '');
+  document.querySelector('#btn-bag')?.setAttribute('hidden', '');
+  document.querySelector('#rotate')?.setAttribute('hidden', '');
+}
+
 /**
  * Левая половина экрана — плавающий стик, правая — свайп обзора.
  * Каждый палец отслеживается по pointerId: иначе второй палец перехватит

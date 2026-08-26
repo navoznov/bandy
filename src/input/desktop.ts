@@ -20,7 +20,11 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
     // и без catch это всплыло бы необработанным отказом промиса. Но молчать обо
     // всех подряд нельзя — запрет из permissions-policy во фрейме выглядел бы как
     // неработающий клик без единого следа в консоли.
-    canvas.requestPointerLock().catch((error: unknown) => {
+    // Промис-версия Pointer Lock появилась в спецификации позже самого API, и
+    // браузер, где метод есть, а промиса нет, вернул бы undefined. Синхронный
+    // TypeError на `.catch` поднялся бы в глобальную ловушку ошибок и подменил бы
+    // игру красным экраном падения — на единственном пути, которым её начинают.
+    Promise.resolve(canvas.requestPointerLock()).catch((error: unknown) => {
       console.warn('Захват курсора не удался:', error);
     });
   });

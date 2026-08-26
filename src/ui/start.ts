@@ -67,6 +67,12 @@ export function createStartOverlay(coarse: boolean): StartOverlay {
 
   window.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'touch') return;
+    // Только на устройстве, которое и есть тач-устройство. На ноутбуке с
+    // тачскрином Pointer Lock существует, и там показом распоряжается захват:
+    // одно случайное касание, снявшее оверлей навсегда, вернуло бы ровно тот
+    // тупик, ради которого оверлей и появился — игрок берётся за клавиатуру,
+    // схема переключается на десктоп, захвата нет, экран замер молча.
+    if (!coarse) return;
     if (rotate && event.target instanceof Node && rotate.contains(event.target)) return;
     dismissed = true;
     apply();

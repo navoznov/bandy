@@ -60,7 +60,13 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 // Без тонмаппинга всё ярче единицы жёстко срезается в чистый белый, и любой
 // пересвет читается плоским диском вместо мягкого блика.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-stopLoop = () => renderer.setAnimationLoop(null);
+// `setAnimationLoop(null)` из середины кадра не обрывает цепочку rAF: three
+// перерегистрирует следующий кадр уже ПОСЛЕ вызова колбэка, и `stop()` отменяет
+// только что сработавший id, то есть не делает ничего. Пользовательский колбэк
+// действительно перестаёт вызываться, но пустая цепочка живёт вечно и будит
+// телефон 60 раз в секунду на белом экране победы. Флаг обрывает её по-настоящему.
+let stopped = false;
+stopLoop = () => { stopped = true; renderer.setAnimationLoop(null); };
 
 // На мобильном GPU контекст теряется при нехватке памяти и после долгого ухода
 // вкладки в фон — без этого игрок получал бы чёрный экран без единого слова.
@@ -155,6 +161,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 renderer.setAnimationLoop((now) => {
+  if (stopped) return;
   try {
     // Клампим шаг времени: после сворачивания вкладки он приходит в секундах
     // и телепортировал бы игрока сквозь стены.
@@ -207,7 +214,9 @@ renderer.setAnimationLoop((now) => {
     camera.updateMatrixWorld();
     scene.updateMatrixWorld();
 
-    if (!paused) {
+    // Под стартовым экраном и паузой цель не подсвечивается: игрок туда не
+    // смотрит, а подсказка проступала бы сквозь затемнение.
+    if (!paused && !start.isVisible()) {
       raycaster.setFromCamera(SCREEN_CENTER, camera);
       const hit = raycaster.intersectObjects(interactables, false)[0];
       const targetId = hit?.object.userData['targetId'] as string | undefined;
@@ -224,6 +233,7 @@ renderer.setAnimationLoop((now) => {
       }
     } else {
       hud.setPrompt(null);
+      input.setInteractAvailable(false);
     }
 
     // Тот же белый оверлей служит и засветкой на подходе, и экраном победы.

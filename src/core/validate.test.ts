@@ -167,6 +167,24 @@ describe('validateLevel: достижимость (I2)', () => {
     expect(validateLevel(lvl, itemDefs).ok).toBe(true);
   });
 
+  it('принимает уровень, где ключ выдаётся эффектом take, а не лежит на полу', () => {
+    // Предмет достают «из ящика»: латунный ключ замок не снимает, но отдаёт
+    // железный, а тот уже открывает. Оба шага — законные данные, и валидатор,
+    // который их не понимает, отвергает проходимый уровень.
+    const defs: Record<string, ItemDef> = {
+      ...itemDefs,
+      key_iron: { id: 'key_iron', name: 'Железный ключ', holdable: true },
+    };
+    const lvl = baseLevel();
+    (lvl.doors[0]! as Record<string, unknown>).lock = 'lock_ab';
+    lvl.interactions.push(
+      { use: 'key_brass', on: 'lock_ab', effects: [{ take: 'key_iron' }] } as never,
+      { use: 'key_iron', on: 'lock_ab', effects: [{ destroy: 'lock_ab' }] } as never,
+    );
+    const result = validateLevel(lvl, defs);
+    expect(result.ok, result.ok ? '' : result.errors.join('\n')).toBe(true);
+  });
+
   it('принимает настоящий уровень src/levels/level_01.json', () => {
     const result = loadLevel();
     expect(result.ok).toBe(true);
@@ -179,6 +197,19 @@ describe('validateLevel: ширина проёма в стыке (I3)', () => {
     const text = errors.join(' ');
     expect(text).toContain('d_ab');
     expect(text).toContain('не помещается');
+  });
+
+  it('о стыке короче двери говорит отдельно, а не вывернутым диапазоном', () => {
+    // Стык длиной 0.5 м. Двигать дверь бесполезно, и «допустимый диапазон»
+    // получился бы вывернутым: [2.45, 2.05]. Автор пошёл бы двигать дверь.
+    const errors = errorsFor((l) => {
+      l.rooms[1]!.rect = [8, 2, 6, 0.5];
+      l.doors[0]!.at = [8, 2.25];
+      l.triggers[0]!.rect = [12, 2, 1, 0.4];
+    });
+    const text = errors.join(' ');
+    expect(text).toContain('короче проёма');
+    expect(text).not.toContain('не хватает');
   });
 
   it('принимает дверь, отстоящую от углов стыка не меньше чем на половину ширины проёма', () => {

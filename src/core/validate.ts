@@ -54,7 +54,8 @@ export function doorOnVerticalWall(door: DoorDef, room: RoomDef): boolean {
 type SharedWallCheck =
   | { ok: true }
   | { ok: false; reason: 'off-wall' }
-  | { ok: false; reason: 'too-narrow'; from: number; to: number };
+  | { ok: false; reason: 'too-narrow'; from: number; to: number }
+  | { ok: false; reason: 'seam-short'; length: number };
 
 /**
  * Лежит ли проём двери (точка ± половина ширины) на стене, общей для двух комнат.
@@ -79,6 +80,11 @@ function checkSharedWall(a: RoomDef, b: RoomDef, px: number, pz: number): Shared
     const from = Math.max(ba.z0, bb.z0);
     const to = Math.min(ba.z1, bb.z1);
     if (pz < from || pz > to) return { ok: false, reason: 'off-wall' };
+    // Стык короче двери — двигать её бесполезно, и «допустимый диапазон» вышел бы
+    // вывернутым: from > to. Это другая ошибка, и говорить о ней надо иначе.
+    if (to - from < DOOR.width - EPS) {
+      return { ok: false, reason: 'seam-short', length: to - from };
+    }
     if (pz < from + half || pz > to - half) {
       return { ok: false, reason: 'too-narrow', from: from + half, to: to - half };
     }
@@ -93,6 +99,9 @@ function checkSharedWall(a: RoomDef, b: RoomDef, px: number, pz: number): Shared
     const from = Math.max(ba.x0, bb.x0);
     const to = Math.min(ba.x1, bb.x1);
     if (px < from || px > to) return { ok: false, reason: 'off-wall' };
+    if (to - from < DOOR.width - EPS) {
+      return { ok: false, reason: 'seam-short', length: to - from };
+    }
     if (px < from + half || px > to - half) {
       return { ok: false, reason: 'too-narrow', from: from + half, to: to - half };
     }
@@ -396,6 +405,21 @@ function computeReachability(
       }
     }
 
+    // Предмет можно не только поднять с пола: правило вправе выдать его эффектом
+    // `take` — так предмет достают «из ящика». Без этого шага валидатор отвергал
+    // бы совершенно проходимый уровень, а CLAUDE.md обещает, что новый предмет —
+    // это правка данных, а не кода.
+    for (const rule of interactions) {
+      if (!collected.has(rule.use)) continue;
+      if (!isRuleTargetReachable(rule.on, { rooms, collected }, doors, items)) continue;
+      for (const effect of rule.effects) {
+        if (effect.kind === 'take' && !collected.has(effect.item)) {
+          collected.add(effect.item);
+          changed = true;
+        }
+      }
+    }
+
     for (const door of doors) {
       const [aId, bId] = door.between;
       const aReach = rooms.has(aId);
@@ -493,6 +517,12 @@ export function validateLevel(
         errors.push(
           `Дверь "${door.id}": точка (${door.at[0]}, ${door.at[1]}) не лежит на общей стене ` +
           `комнат "${aId}" и "${bId}".`,
+        );
+      } else if (!check.ok && check.reason === 'seam-short') {
+        errors.push(
+          `Дверь "${door.id}": стык комнат "${aId}" и "${bId}" длиной ` +
+          `${check.length.toFixed(2)} м короче проёма ${DOOR.width} м. Двигать дверь ` +
+          `бесполезно — надо менять размеры самих комнат.`,
         );
       } else if (!check.ok && check.reason === 'too-narrow') {
         const along = doorOnVerticalWall(door, a) ? door.at[1] : door.at[0];
