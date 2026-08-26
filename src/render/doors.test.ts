@@ -19,7 +19,7 @@ function roomBounds(rect: readonly number[]): { x0: number; z0: number; x1: numb
   return { x0: x, z0: z, x1: x + w, z1: z + d };
 }
 
-for (const levelId of ['level_01', 'level_02']) {
+for (const levelId of ['level_01', 'level_02', 'level_03']) {
   describe(`замки в ${levelId}`, () => {
     const loaded = loadLevel(levelId);
     if (!loaded.ok) throw new Error(loaded.errors.join('\n'));
