@@ -8,6 +8,11 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
   const state: InputState = emptyState();
   const pressed = new Set<string>();
   let locked = false;
+  // Первое mousemove после захвата приносит не движение, а дельту от того места,
+  // где курсор был до захвата. Пока захват возвращали кликом, это не проявлялось:
+  // клик сам ставит опорную точку туда, где захват и произойдёт. Возврат по
+  // клавише (закрытие рюкзака) такой опоры не даёт, и камера прыгала в сторону.
+  let skipNextMove = false;
 
   function requestLock(): void {
     if (locked) return;
@@ -32,12 +37,18 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
   canvas.addEventListener('click', requestLock);
 
   document.addEventListener('pointerlockchange', () => {
+    const was = locked;
     locked = document.pointerLockElement === canvas;
+    if (locked && !was) skipNextMove = true;
     if (!locked) pressed.clear();
   });
 
   document.addEventListener('mousemove', (event) => {
     if (!locked) return;
+    if (skipNextMove) {
+      skipNextMove = false;
+      return;
+    }
     state.look.dx += event.movementX;
     state.look.dy += event.movementY;
   });
