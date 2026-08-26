@@ -47,7 +47,11 @@ export function buildSigns(level: Level): THREE.Group {
     const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.18), material);
 
     const y = DOOR.height + (ROOM.height - DOOR.height) / 2;
-    const offset = ROOM.wallThickness / 2 + 0.02;
+    // Табличка садится у грани перемычки над дверью. Перемычка (walls.ts)
+    // перекрывает стык на полную ROOM.wallThickness от границы, а не на её
+    // половину, поэтому и здесь нужна полная толщина, а не половина — иначе
+    // при следующей правке толщины стен плоскость молча уедет внутрь бокса (M3).
+    const offset = ROOM.wallThickness + 0.02;
 
     // Нормаль таблички смотрит в комнату. Проём лежит на той границе комнаты,
     // к которой он ближе, и с этой стороны стены нужная нам сторона — внутренняя.

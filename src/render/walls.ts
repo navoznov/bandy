@@ -28,9 +28,12 @@ export function buildWalls(level: Level): THREE.Group {
     addBox(group, box.x0, box.x1, box.z0, box.z1, 0, ROOM.height);
   }
 
-  // Перемычка над каждым дверным проёмом.
+  // Перемычка над каждым дверным проёмом. Стены комнат уходят внутрь на ПОЛНЫЕ
+  // ROOM.wallThickness с каждой стороны границы (см. colliders.ts), поэтому
+  // перемычка тоже должна перекрывать стык на полную толщину, а не на половину:
+  // иначе между ней и обеими стенами остаётся ниша глубиной wallThickness/2 (M2).
   const halfDoor = DOOR.width / 2;
-  const halfWall = ROOM.wallThickness / 2;
+  const halfWall = ROOM.wallThickness;
   for (const door of level.doors) {
     const [dx, dz] = door.at;
     const room = level.rooms.find((r) => r.id === door.between[0]);
