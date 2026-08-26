@@ -3,6 +3,17 @@ import { DOOR, ROOM } from '../config';
 import { doorOnVerticalWall, roomBounds } from '../core/validate';
 import type { Level } from '../core/types';
 
+/** Толщина корпуса таблички и зазор до перемычки, за который она не заходит. */
+const SIGN_DEPTH = 0.05;
+const SIGN_STANDOFF = 0.005;
+
+/**
+ * Бока и низ корпуса. В отличие от лицевой грани они реагируют на свет: именно
+ * тень на нижней грани и читается как объём, когда игрок смотрит на табличку
+ * снизу вверх. Материал общий на все таблички — как и в walls.ts.
+ */
+const SIGN_CASING = new THREE.MeshStandardMaterial({ color: 0x16261a, roughness: 0.7 });
+
 /** Текст рисуется на канвасе: файлов-текстур в проекте нет. */
 export function makeSignTexture(text: string): THREE.CanvasTexture {
   const width = 512;
@@ -35,23 +46,30 @@ export function buildSigns(level: Level): THREE.Group {
 
     const [dx, dz] = door.at;
     // Табличка вешается со стороны комнаты `between[0]` — той, ИЗ которой в дверь
-    // входят. Сторону нельзя зашивать константой: PlaneGeometry односторонняя, и
+    // входят. Сторону нельзя зашивать константой: текст только на одной грани, и
     // повешенная не с той стороны табличка уедет внутрь стены и отвернётся от игрока.
     const room = level.rooms.find((r) => r.id === door.between[0]);
     if (!room) continue;
     const b = roomBounds(room);
 
-    // MeshBasicMaterial не зависит от освещения: табличка останется яркой,
-    // когда в комплексе позже выключат свет.
-    const material = new THREE.MeshBasicMaterial({ map: makeSignTexture(door.sign) });
-    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.18), material);
+    // MeshBasicMaterial не зависит от освещения: лицевая грань останется яркой,
+    // когда в комплексе позже выключат свет. Корпус, наоборот, освещением живёт.
+    const face = new THREE.MeshBasicMaterial({ map: makeSignTexture(door.sign) });
+    // Порядок граней у BoxGeometry: +X, -X, +Y, -Y, +Z, -Z. Текст только на +Z:
+    // это та грань, которую разворот ниже направляет в комнату. Без раскладки по
+    // граням надпись повторилась бы на всех шести, включая торцы.
+    const plate = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.18, SIGN_DEPTH),
+      [SIGN_CASING, SIGN_CASING, SIGN_CASING, SIGN_CASING, face, SIGN_CASING],
+    );
 
     const y = DOOR.height + (ROOM.height - DOOR.height) / 2;
-    // Табличка садится у грани перемычки над дверью. Перемычка (walls.ts)
-    // перекрывает стык на полную ROOM.wallThickness от границы, а не на её
-    // половину, поэтому и здесь нужна полная толщина, а не половина — иначе
-    // при следующей правке толщины стен плоскость молча уедет внутрь бокса (M3).
-    const offset = ROOM.wallThickness + 0.02;
+    // Смещение считается от грани перемычки над дверью, а не от границы комнат.
+    // Перемычка (walls.ts) перекрывает стык на полную ROOM.wallThickness, поэтому
+    // тут нужна полная толщина, а не половина — иначе при следующей правке стен
+    // корпус молча уедет внутрь непрозрачного бокса (M3 финального ревью).
+    // Дальше — зазор и полтолщины корпуса: центр коробки, а не плоскость.
+    const offset = ROOM.wallThickness + SIGN_STANDOFF + SIGN_DEPTH / 2;
 
     // Нормаль таблички смотрит в комнату. Проём лежит на той границе комнаты,
     // к которой он ближе, и с этой стороны стены нужная нам сторона — внутренняя.
@@ -64,10 +82,11 @@ export function buildSigns(level: Level): THREE.Group {
     group.add(plate);
 
     // Лампа отодвинута от стены, а не посажена на саму табличку. Затухание
-    // физически корректное (decay 2), поэтому источник на 0.12 м от стены дал бы
-    // освещённость около 3 / 0.12² ≈ 200 и стена вокруг таблички превратилась бы
-    // в плоское белое пятно — ровно то, что уже случилось с потолком в задаче 8.
-    // Здесь 0.5 / 0.62² ≈ 1.3: ореол заметен, пересвета нет.
+    // физически корректное (decay 2), поэтому источник вплотную к стене дал бы
+    // освещённость в сотни единиц и стена вокруг таблички превратилась бы в
+    // плоское белое пятно — ровно то, что уже случилось с потолком в задаче 8.
+    // Здесь до грани перемычки 0.53 м, то есть 0.5 / 0.53² ≈ 1.8: ореол заметен,
+    // пересвета нет. Заодно этот же источник подсвечивает торцы корпуса.
     const glow = new THREE.PointLight(0x7dff9b, 0.5, 3, 2);
     glow.position.copy(plate.position).addScaledVector(normal, 0.5);
     group.add(glow);
