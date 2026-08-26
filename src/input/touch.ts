@@ -100,6 +100,11 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
   };
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
+  // Страховка на потерянный `pointerup`: без неё `state.move` остался бы
+  // ненулевым и игрок шёл бы вечно. Браузер выдаёт implicit pointer capture
+  // элементу, принявшему `pointerdown`, и о снятии захвата сообщает всегда,
+  // даже когда само отпускание до обработчика не доехало.
+  canvas.addEventListener('lostpointercapture', release);
 
   useButton.addEventListener('click', () => { state.interact = true; });
   bagButton.addEventListener('click', () => { state.toggleInventory = true; });

@@ -7,6 +7,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="manifest.webmanifest" />
+    <!-- iOS манифест не читает: иконку домашнего экрана берёт отсюда,
+         а без неё кладёт на экран скриншот чёрного канваса. -->
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <title>Bandy</title>
     <style>
       html, body { margin: 0; padding: 0; height: 100dvh; overflow: hidden; background: #000; }
