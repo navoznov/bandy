@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { doorOnVerticalWall, validateLevel } from './validate';
+import { loadLevel } from '../levels';
 import type { DoorDef, ItemDef, RoomDef } from './types';
 
 const itemDefs: Record<string, ItemDef> = {
@@ -16,7 +17,7 @@ function baseLevel() {
     ],
     doors: [{ id: 'd_ab', between: ['a', 'b'], at: [8, 3] }],
     items: [{ def: 'key_brass', room: 'a', at: [2, 0.9, 4] }],
-    triggers: [],
+    triggers: [{ id: 'base_win', room: 'b', rect: [12, 2, 1, 1], effect: 'win' }],
     interactions: [],
   };
 }
@@ -51,7 +52,7 @@ describe('validateLevel', () => {
 
   it('принимает дверь на горизонтальной общей стене', () => {
     const lvl = baseLevel();
-    lvl.rooms.push({ id: 'c', rect: [0, 6, 4, 4], color: '#888', light: 1 });
+    lvl.rooms.push({ id: 'c', rect: [0, 6, 4, 4], color: '#888888', light: 1 });
     lvl.doors.push({ id: 'd_ac', between: ['a', 'c'], at: [2, 6] });
     expect(validateLevel(lvl, itemDefs).ok).toBe(true);
   });
@@ -130,5 +131,134 @@ describe('doorOnVerticalWall', () => {
   it('дверь на южной стене лежит на горизонтальной', () => {
     const door = { id: 'd', between: ['hall', 'other'], at: [4, 6] } as DoorDef;
     expect(doorOnVerticalWall(door, hall)).toBe(false);
+  });
+});
+
+describe('validateLevel: достижимость (I2)', () => {
+  it('ловит уровень, где ключ лежит за той самой дверью, которую он открывает', () => {
+    const errors = errorsFor((l) => {
+      (l.doors[0]! as Record<string, unknown>).lock = 'lock_ab';
+      l.items[0]!.room = 'b'; // ключ теперь ЗА запертой дверью d_ab
+      l.interactions.push({
+        use: 'key_brass',
+        on: 'lock_ab',
+        effects: [{ destroy: 'lock_ab' }, { consume: 'key_brass' }],
+      } as never);
+    });
+    const text = errors.join(' ');
+    expect(text).toContain('нельзя попасть, не открыв этот замок');
+    expect(text).toContain('lock_ab');
+    expect(text).toContain('"b"');
+  });
+
+  it('ловит уровень без пути к победе общим сообщением, когда специфичная причина не подходит', () => {
+    const errors = errorsFor((l) => { l.triggers = []; });
+    expect(errors.join(' ')).toContain('непроходим');
+  });
+
+  it('принимает уровень с ключом на стороне спавна и замком дальше по пути', () => {
+    const lvl = baseLevel();
+    (lvl.doors[0]! as Record<string, unknown>).lock = 'lock_ab';
+    lvl.interactions.push({
+      use: 'key_brass',
+      on: 'lock_ab',
+      effects: [{ destroy: 'lock_ab' }, { consume: 'key_brass' }],
+    } as never);
+    expect(validateLevel(lvl, itemDefs).ok).toBe(true);
+  });
+
+  it('принимает настоящий уровень src/levels/level_01.json', () => {
+    const result = loadLevel();
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe('validateLevel: ширина проёма в стыке (I3)', () => {
+  it('ловит дверь у самого угла стыка, куда не помещается проём', () => {
+    const errors = errorsFor((l) => { l.doors[0]!.at = [8, 2]; }); // стык z 2..4, дверь ровно в углу
+    const text = errors.join(' ');
+    expect(text).toContain('d_ab');
+    expect(text).toContain('не помещается');
+  });
+
+  it('принимает дверь, отстоящую от углов стыка не меньше чем на половину ширины проёма', () => {
+    // стык a/b по z: [2, 4], половина ширины проёма 0.45 => допустимо [2.45, 3.55]
+    const errors = errorsFor((l) => { l.doors[0]!.at = [8, 2.45]; });
+    expect(errors).toEqual([]);
+  });
+});
+
+describe('validateLevel: уникальность идентификаторов (M9)', () => {
+  it('ловит совпадение id двери с id предмета из реестра', () => {
+    const errors = errorsFor((l) => { l.doors[0]!.id = 'key_brass'; });
+    const text = errors.join(' ');
+    expect(text).toContain('key_brass');
+    expect(text).toContain('использован дважды');
+  });
+
+  it('ловит совпадение id замка с id триггера', () => {
+    const errors = errorsFor((l) => {
+      (l.doors[0]! as Record<string, unknown>).lock = 'base_win';
+      l.interactions.push({
+        use: 'key_brass',
+        on: 'base_win',
+        effects: [{ destroy: 'base_win' }],
+      } as never);
+    });
+    const text = errors.join(' ');
+    expect(text).toContain('base_win');
+    expect(text).toContain('использован дважды');
+  });
+});
+
+describe('validateLevel: структурная проверка формы JSON (M10)', () => {
+  it('ловит мусор в поле color, не подменяя его сообщением про другое поле', () => {
+    const errors = errorsFor((l) => { l.rooms[0]!.color = 'не цвет'; });
+    expect(errors.join(' ')).toContain('"color"');
+  });
+
+  it('ловит мусор в поле light', () => {
+    const errors = errorsFor((l) => {
+      (l.rooms[0]! as Record<string, unknown>).light = 'ярко';
+    });
+    expect(errors.join(' ')).toContain('"light"');
+  });
+
+  it('ловит битый rect и называет настоящую причину, а не спавн', () => {
+    const errors = errorsFor((l) => { l.rooms[0]!.rect = [0, 0, 8]; });
+    const text = errors.join(' ');
+    expect(text).toContain('rect');
+    expect(text).not.toContain('находится вне комнаты');
+  });
+
+  it('ловит неположительную ширину или глубину комнаты', () => {
+    const errors = errorsFor((l) => { l.rooms[0]!.rect = [0, 0, -8, -6]; });
+    expect(errors.join(' ')).toContain('положительными');
+  });
+
+  it('ловит поле "at" двери неправильной формы', () => {
+    const errors = errorsFor((l) => { (l.doors[0]! as Record<string, unknown>).at = [8]; });
+    expect(errors.join(' ')).toContain('"at"');
+  });
+
+  it('ловит поле "at" предмета неправильной формы', () => {
+    const errors = errorsFor((l) => { l.items[0]!.at = [2, 4]; });
+    expect(errors.join(' ')).toContain('"at"');
+  });
+
+  it('ловит нестроковый id комнаты', () => {
+    const errors = errorsFor((l) => {
+      (l.rooms[0]! as Record<string, unknown>).id = 42;
+    });
+    expect(errors.join(' ')).toContain('"id"');
+  });
+
+  it('ловит поле "rooms", которое не является массивом', () => {
+    const lvl = baseLevel() as unknown as Record<string, unknown>;
+    lvl['rooms'] = 'не массив';
+    const result = validateLevel(lvl, itemDefs);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.join(' ')).toContain('"rooms"');
   });
 });

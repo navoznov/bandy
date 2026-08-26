@@ -12,8 +12,8 @@ export function makeTestLevel(): Level {
     id: 'fixture',
     spawn: { room: 'a', x: 2, z: 3, yaw: 0 },
     rooms: [
-      { id: 'a', rect: [0, 0, 8, 6], color: '#888', light: 1 },
-      { id: 'b', rect: [8, 2, 6, 2], color: '#888', light: 1 },
+      { id: 'a', rect: [0, 0, 8, 6], color: '#888888', light: 1 },
+      { id: 'b', rect: [8, 2, 6, 2], color: '#888888', light: 1 },
     ],
     doors: [{ id: 'd_ab', between: ['a', 'b'], at: [8, 3], lock: 'lock_ab' }],
     items: [
