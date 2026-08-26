@@ -23,7 +23,12 @@ export function showFatal(title: string, lines: string[]): void {
 export function hasWebGl(): boolean {
   try {
     const canvas = document.createElement('canvas');
-    return canvas.getContext('webgl2') !== null || canvas.getContext('webgl') !== null;
+    const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+    if (gl === null) return false;
+    // Проба занимает один слот из примерно шестнадцати, которые браузер держит
+    // на вкладку, а настоящий рендер создаёт контекст следом. Отпускаем сразу.
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
   } catch {
     return false;
   }
