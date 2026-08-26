@@ -33,17 +33,17 @@ export function buildWalls(level: Level): THREE.Group {
   // перемычка тоже должна перекрывать стык на полную толщину, а не на половину:
   // иначе между ней и обеими стенами остаётся ниша глубиной wallThickness/2 (M2).
   const halfDoor = DOOR.width / 2;
-  const halfWall = ROOM.wallThickness;
+  const lintelReach = ROOM.wallThickness;
   for (const door of level.doors) {
     const [dx, dz] = door.at;
     const room = level.rooms.find((r) => r.id === door.between[0]);
     if (!room) continue;
 
     if (doorOnVerticalWall(door, room)) {
-      addBox(group, dx - halfWall, dx + halfWall, dz - halfDoor, dz + halfDoor,
+      addBox(group, dx - lintelReach, dx + lintelReach, dz - halfDoor, dz + halfDoor,
              DOOR.height, ROOM.height);
     } else {
-      addBox(group, dx - halfDoor, dx + halfDoor, dz - halfWall, dz + halfWall,
+      addBox(group, dx - halfDoor, dx + halfDoor, dz - lintelReach, dz + lintelReach,
              DOOR.height, ROOM.height);
     }
   }
