@@ -13,7 +13,12 @@ const LEAF_THICKNESS = 0.06;
 // Размеры одинаковы у всех дверей и всех замков, поэтому геометрия общая — как
 // и материалы выше. Из-за этого её нельзя освобождать при уничтожении одной цели.
 const LEAF_GEOMETRY = new THREE.BoxGeometry(DOOR.width, DOOR.height, LEAF_THICKNESS);
-const LOCK_GEOMETRY = new THREE.BoxGeometry(0.14, 0.2, 0.08);
+// Замок глубже полотна (0.06) и центрирован на нём, поэтому торчит на 5 см в
+// обе стороны. Иначе он висел бы на одной грани — и у двери, к которой игрок
+// подходит с другой стороны, оказался бы в комнате ЗА запертой дверью.
+// Уровень при этом проходит и валидацию, и сквозной тест ядра: ядро о
+// положении мешей не знает. Ловится `doors.test.ts`.
+const LOCK_GEOMETRY = new THREE.BoxGeometry(0.14, 0.2, 0.16);
 
 /**
  * Петля стоит не ровно на краю проёма, а сдвинута внутрь на полтолщины полотна
@@ -100,7 +105,7 @@ export function buildDoors(level: Level, world: World): Doors {
 
     if (door.lock) {
       const lock = new THREE.Mesh(LOCK_GEOMETRY, LOCK_MATERIAL);
-      lock.position.set(DOOR.width * 0.82, 1.15, 0.07);
+      lock.position.set(DOOR.width * 0.82, 1.15, 0);
       lock.userData['targetId'] = door.lock;
       pivot.add(lock);
       targets.push(lock);
