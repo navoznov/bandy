@@ -1,0 +1,56 @@
+{
+  "id": "level_02",
+  "spawn": { "room": "boiler", "x": 2, "z": 8, "yaw": -1.5708 },
+
+  "rooms": [
+    { "id": "boiler",     "rect": [0, 6, 6, 4],   "color": "#4a4640", "light": 0.55 },
+    { "id": "corr_main",  "rect": [6, 7, 15, 2],  "color": "#3f4245", "light": 0.45 },
+    { "id": "elec",       "rect": [6, 2, 6, 5],   "color": "#57503f", "light": 0.7 },
+    { "id": "dead_pit",   "rect": [12, 2, 6, 5],  "color": "#33363a", "light": 0.35 },
+    { "id": "store",      "rect": [6, 9, 6, 5],   "color": "#4e4a44", "light": 0.6 },
+    { "id": "pump",       "rect": [12, 9, 6, 5],  "color": "#3a4a4a", "light": 0.4 },
+    { "id": "corr_north", "rect": [6, 14, 12, 2], "color": "#3f4245", "light": 0.45 },
+    { "id": "archive",    "rect": [6, 16, 6, 4],  "color": "#584c46", "light": 0.65 },
+    { "id": "cold",       "rect": [12, 16, 6, 4], "color": "#40484f", "light": 0.5 },
+    { "id": "exit_hall",  "rect": [18, 9, 3, 16], "color": "#5a5a60", "light": 0.4 }
+  ],
+
+  "doors": [
+    { "id": "d_boiler_corr",   "between": ["boiler", "corr_main"],    "at": [6, 8] },
+    { "id": "d_corr_store",    "between": ["corr_main", "store"],     "at": [9, 9] },
+    { "id": "d_corr_pump",     "between": ["corr_main", "pump"],      "at": [15, 9] },
+    { "id": "d_corr_elec",     "between": ["corr_main", "elec"],      "at": [9, 7],
+      "lock": "lock_grate" },
+    { "id": "d_corr_pit",      "between": ["corr_main", "dead_pit"],  "at": [15, 7] },
+    { "id": "d_store_north",   "between": ["store", "corr_north"],    "at": [9, 14] },
+    { "id": "d_north_archive", "between": ["corr_north", "archive"],  "at": [9, 16] },
+    { "id": "d_north_cold",    "between": ["corr_north", "cold"],     "at": [15, 16] },
+    { "id": "d_corr_exit",     "between": ["corr_main", "exit_hall"], "at": [19.5, 9],
+      "lock": "lock_exit", "sign": "EXIT" }
+  ],
+
+  "items": [
+    { "def": "key_iron",  "room": "archive", "at": [9, 0.02, 18] },
+    { "def": "key_steel", "room": "elec",    "at": [9, 0.02, 4.5] },
+    { "def": "pipe",      "room": "cold",    "at": [15, 0.02, 18] }
+  ],
+
+  "triggers": [
+    { "id": "win", "room": "exit_hall", "rect": [18, 22, 3, 3], "effect": "win" }
+  ],
+
+  "interactions": [
+    { "use": "key_iron", "on": "lock_grate",
+      "effects": [
+        { "destroy": "lock_grate" },
+        { "consume": "key_iron" },
+        { "say": "Решётка звякнула и упала на бетон." }
+      ] },
+    { "use": "key_steel", "on": "lock_exit",
+      "effects": [
+        { "destroy": "lock_exit" },
+        { "consume": "key_steel" },
+        { "say": "Замок поддался. Дверь свободна." }
+      ] }
+  ]
+}

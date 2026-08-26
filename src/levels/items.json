@@ -1,3 +1,6 @@
 {
-  "key_brass": { "id": "key_brass", "name": "Латунный ключ", "holdable": true }
+  "key_brass": { "id": "key_brass", "name": "Латунный ключ", "holdable": true },
+  "key_iron":  { "id": "key_iron",  "name": "Железный ключ", "holdable": true },
+  "key_steel": { "id": "key_steel", "name": "Стальной ключ", "holdable": true },
+  "pipe":      { "id": "pipe",      "name": "Обрезок трубы", "holdable": true }
 }
