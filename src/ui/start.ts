@@ -36,7 +36,7 @@ export function createStartOverlay(coarse: boolean): StartOverlay {
     if (next === visible) return;
     // Первый показ считается снятым только когда игра действительно началась,
     // то есть по захвату. Иначе открытый до старта инвентарь превратил бы
-    // стартовый экран в «Паузу», хотя пауза ещё нечему.
+    // стартовый экран в «Паузу», хотя игра ещё не начиналась.
     if (!next && locked) shownOnce = true;
     visible = next;
     root!.hidden = !visible;
