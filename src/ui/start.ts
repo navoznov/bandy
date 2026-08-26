@@ -34,7 +34,10 @@ export function createStartOverlay(coarse: boolean): StartOverlay {
   function apply(): void {
     const next = !dismissed && !inventoryOpen && !locked;
     if (next === visible) return;
-    if (!next) shownOnce = true;
+    // Первый показ считается снятым только когда игра действительно началась,
+    // то есть по захвату. Иначе открытый до старта инвентарь превратил бы
+    // стартовый экран в «Паузу», хотя пауза ещё нечему.
+    if (!next && locked) shownOnce = true;
     visible = next;
     root!.hidden = !visible;
     // Второй и дальнейшие показы на десктопе — это пауза, а не начало игры.
@@ -55,8 +58,16 @@ export function createStartOverlay(coarse: boolean): StartOverlay {
   // Тач: Pointer Lock там не существует, а `isLocked()` всегда `true`, поэтому
   // завязать показ на захват нельзя. Первое касание снимает оверлей навсегда;
   // паузы по Escape на телефоне нет и не нужно.
+  //
+  // Кроме касаний по «поверни телефон»: в портрете этот оверлей лежит выше всех
+  // и ловит на себя всё подряд. Такой тап означает «повернул телефон», а не
+  // «начал играть», и, засчитанный за начало, он унёс бы стартовый экран до
+  // того, как игрок в ландшафте прочитал бы хоть строчку про управление.
+  const rotate = document.querySelector<HTMLElement>('#rotate');
+
   window.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'touch') return;
+    if (rotate && event.target instanceof Node && rotate.contains(event.target)) return;
     dismissed = true;
     apply();
   }, { capture: true });
