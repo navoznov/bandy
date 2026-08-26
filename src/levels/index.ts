@@ -1,5 +1,6 @@
 import rawLevel01 from './level_01.json';
 import rawLevel02 from './level_02.json';
+import rawLevel03 from './level_03.json';
 import rawItems from './items.json';
 import { validateLevel } from '../core/validate';
 import type { ItemDef, Level } from '../core/types';
@@ -14,6 +15,7 @@ export type LoadResult = { ok: true; level: Level } | { ok: false; errors: strin
 const LEVELS: ReadonlyArray<{ id: string; raw: unknown }> = [
   { id: 'level_01', raw: rawLevel01 },
   { id: 'level_02', raw: rawLevel02 },
+  { id: 'level_03', raw: rawLevel03 },
 ];
 
 const ITEM_DEFS = rawItems as unknown as Record<string, ItemDef>;

@@ -26,7 +26,8 @@ describe('реестр уровней', () => {
 
   it('знает порядок прохождения и конец игры', () => {
     expect(nextLevelId('level_01')).toBe('level_02');
-    expect(nextLevelId('level_02')).toBe(null);
+    expect(nextLevelId('level_02')).toBe('level_03');
+    expect(nextLevelId('level_03')).toBe(null);
     expect(nextLevelId('level_99')).toBe(null);
   });
 });

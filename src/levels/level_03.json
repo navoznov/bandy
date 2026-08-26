@@ -1,0 +1,80 @@
+{
+  "id": "level_03",
+  "spawn": { "room": "stair", "x": 8, "z": 1.5, "yaw": 3.1416 },
+
+  "rooms": [
+    { "id": "stair",     "rect": [6, 0, 4, 4],    "color": "#6a7078", "light": 0.6 },
+    { "id": "kitchen",   "rect": [10, 0, 6, 4],   "color": "#8a8270", "light": 0.8 },
+
+    { "id": "hall_s",    "rect": [6, 4, 10, 2],   "color": "#6f6a66", "light": 0.5 },
+    { "id": "hall_w",    "rect": [6, 6, 2, 6],    "color": "#6f6a66", "light": 0.5 },
+    { "id": "hall_e",    "rect": [14, 6, 2, 6],   "color": "#6f6a66", "light": 0.5 },
+    { "id": "hall_n",    "rect": [6, 12, 10, 2],  "color": "#6f6a66", "light": 0.5 },
+
+    { "id": "bedroom",   "rect": [0, 4, 6, 10],   "color": "#74697a", "light": 0.55 },
+    { "id": "study",     "rect": [16, 4, 6, 5],   "color": "#6b6656", "light": 0.65 },
+    { "id": "bath",      "rect": [16, 9, 6, 5],   "color": "#6d7c82", "light": 0.8 },
+    { "id": "nursery",   "rect": [6, 14, 5, 4],   "color": "#8c7a68", "light": 0.75 },
+    { "id": "store",     "rect": [11, 14, 5, 4],  "color": "#5a554f", "light": 0.4 },
+
+    { "id": "exit_hall", "rect": [11, 18, 3, 12], "color": "#5a5a60", "light": 0.4 }
+  ],
+
+  "doors": [
+    { "id": "d_stair_hall",   "between": ["stair", "hall_s"],     "at": [8, 4] },
+
+    { "id": "d_ring_sw",      "between": ["hall_s", "hall_w"],    "at": [7, 6] },
+    { "id": "d_ring_se",      "between": ["hall_s", "hall_e"],    "at": [15, 6] },
+    { "id": "d_ring_nw",      "between": ["hall_w", "hall_n"],    "at": [7, 12] },
+    { "id": "d_ring_ne",      "between": ["hall_e", "hall_n"],    "at": [15, 12] },
+
+    { "id": "d_hall_bedroom", "between": ["hall_w", "bedroom"],   "at": [6, 9] },
+    { "id": "d_hall_study",   "between": ["hall_e", "study"],     "at": [16, 7.5] },
+    { "id": "d_hall_nursery", "between": ["hall_n", "nursery"],   "at": [8.5, 14] },
+    { "id": "d_hall_store",   "between": ["hall_n", "store"],     "at": [13.5, 14] },
+
+    { "id": "d_hall_kitchen", "between": ["hall_s", "kitchen"],   "at": [13, 4],
+      "lock": "lock_copper" },
+    { "id": "d_hall_bath",    "between": ["hall_e", "bath"],      "at": [16, 10.5],
+      "lock": "lock_rusty" },
+    { "id": "d_store_exit",   "between": ["store", "exit_hall"],  "at": [12.5, 18],
+      "lock": "lock_silver", "sign": "EXIT" }
+  ],
+
+  "locks": {
+    "lock_copper": "Медный замок",
+    "lock_rusty": "Ржавый замок",
+    "lock_silver": "Серебряный замок"
+  },
+
+  "items": [
+    { "def": "key_copper", "room": "nursery", "at": [8.5, 0.02, 16] },
+    { "def": "pipe",       "room": "kitchen", "at": [13, 0.02, 2] },
+    { "def": "key_silver", "room": "bath",    "at": [19, 0.02, 11.5] },
+    { "def": "key_iron",   "room": "bedroom", "at": [3, 0.02, 9] }
+  ],
+
+  "triggers": [
+    { "id": "win", "room": "exit_hall", "rect": [11, 27, 3, 3], "effect": "win" }
+  ],
+
+  "interactions": [
+    { "use": "key_copper", "on": "lock_copper",
+      "effects": [
+        { "destroy": "lock_copper" },
+        { "consume": "key_copper" },
+        { "say": "Медный замок щёлкнул и упал на ковёр." }
+      ] },
+    { "use": "pipe", "on": "lock_rusty",
+      "effects": [
+        { "destroy": "lock_rusty" },
+        { "say": "Ржавая дужка хрустнула и лопнула." }
+      ] },
+    { "use": "key_silver", "on": "lock_silver",
+      "effects": [
+        { "destroy": "lock_silver" },
+        { "consume": "key_silver" },
+        { "say": "Серебряный замок открылся. За дверью — коридор к выходу." }
+      ] }
+  ]
+}
