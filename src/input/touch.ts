@@ -1,3 +1,4 @@
+import { LOOK } from '../config';
 import { emptyState, type InputSource, type InputState } from './types';
 
 const STICK_RADIUS = 60;
@@ -76,8 +77,8 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
       state.move.x = (dx * clamped) / STICK_RADIUS;
       state.move.y = (dy * clamped) / STICK_RADIUS;
     } else if (event.pointerId === lookPointer) {
-      state.look.dx += event.clientX - lookLast.x;
-      state.look.dy += event.clientY - lookLast.y;
+      state.look.dx += (event.clientX - lookLast.x) * LOOK.touchGain;
+      state.look.dy += (event.clientY - lookLast.y) * LOOK.touchGain;
       lookLast = { x: event.clientX, y: event.clientY };
     }
   });
