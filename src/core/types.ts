@@ -69,6 +69,12 @@ export interface Level {
   triggers: TriggerDef[];
   interactions: InteractionRule[];
   itemDefs: Record<string, ItemDef>;
+  /**
+   * Название замка, как его видит игрок: «идентификатор из `door.lock`» → строка.
+   * Единственное собственное свойство замка, поэтому отображение плоское, а не
+   * запись с полями. Замок описывает себя, но не называет нужный ключ (спека §5).
+   */
+  locks: Record<string, string>;
 }
 
 export type ItemLocation =

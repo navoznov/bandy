@@ -76,6 +76,30 @@ describe('resolveInteraction', () => {
     if (!wrong.ok) expect(wrong.untried).toBeUndefined();
   });
 
+  /**
+   * Спека §5: замок описывает себя, но не называет ключ. Игрок стоит перед ним и
+   * видит материал — сопоставляет с ключом он сам, а не игра. Название идёт
+   * первым в обоих отказах: иначе, держа неподходящий предмет, игрок вообще не
+   * узнал бы, что за замок перед ним.
+   */
+  it('замок называет себя, когда руки пусты', () => {
+    const outcome = armed(null).describe('lock_ab');
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.refusal).toBe('Латунный замок. Нужно чем-то открыть.');
+  });
+
+  it('замок называет себя и с неподходящим предметом в руках', () => {
+    const outcome = armed('rock').describe('lock_ab');
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.refusal).toBe('Латунный замок. Камень не подходит.');
+  });
+
+  it('нужный ключ замок не называет — это ответ, а не описание', () => {
+    const outcome = armed(null).describe('lock_ab');
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.refusal).not.toContain('Латунный ключ');
+  });
+
   it('без предмета в руках замок открыть нечем', () => {
     const outcome = armed(null).describe('lock_ab');
     expect(outcome.ok).toBe(false);

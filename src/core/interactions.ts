@@ -71,10 +71,16 @@ export function resolveInteraction(view: WorldView, targetId: string): Outcome {
         effects: [{ kind: 'take', item: target.id }],
       };
 
-    case 'lock':
+    case 'lock': {
+      // Название идёт первым в обоих отказах: держа неподходящий предмет, игрок
+      // иначе вообще не узнал бы, что за замок перед ним. Запасной текст на случай
+      // безымянного замка — прежний; валидатор такого уровня не пропустит, но
+      // `noUncheckedIndexedAccess` требует ветку, и врать в ней незачем.
+      const lock = view.level.locks[target.id] ?? 'Замок заперт';
       return held === null
-        ? { ok: false, refusal: 'Замок заперт. Нужно чем-то открыть.' }
-        : { ok: false, refusal: `${nameOf(view, held)} сюда не подходит.` };
+        ? { ok: false, refusal: `${lock}. Нужно чем-то открыть.` }
+        : { ok: false, refusal: `${lock}. ${nameOf(view, held)} не подходит.` };
+    }
 
     case 'door': {
       const { door } = target;

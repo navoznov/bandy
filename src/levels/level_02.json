@@ -29,6 +29,11 @@
       "lock": "lock_exit", "sign": "EXIT" }
   ],
 
+  "locks": {
+    "lock_grate": "Железный замок",
+    "lock_exit": "Стальной замок"
+  },
+
   "items": [
     { "def": "key_iron",  "room": "archive", "at": [9, 0.02, 18] },
     { "def": "key_steel", "room": "elec",    "at": [9, 0.02, 4.5] },
