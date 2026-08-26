@@ -118,6 +118,15 @@ world.on((event) => {
   if (event.kind === 'said') hud.flash(event.text);
 });
 
+// Подобранный предмет молча исчезал из мира, и о существовании рюкзака игрок
+// нигде не узнавал. Без этого шага цепочка «подобрать → взять в руку → открыть
+// замок» не начинается, и игра непроходима для того, кто не читал README.
+world.on((event) => {
+  if (event.kind === 'itemTaken') {
+    hud.flash(`${level.itemDefs[event.item]?.name ?? event.item} убран в рюкзак.`);
+  }
+});
+
 world.on((event) => {
   if (event.kind === 'handChanged') hand.setItem(event.item);
 });

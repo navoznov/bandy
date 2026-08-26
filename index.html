@@ -40,10 +40,14 @@
          а инвентарь поверх неё остаётся читаемым. Экран победы выше всех. */
       #flash { position: fixed; inset: 0; background: #ffffff; opacity: 0;
                pointer-events: none; z-index: 5; }
-      #win { position: fixed; inset: 0; display: flex; align-items: center;
-             justify-content: center; z-index: 21; color: #1a1a1a;
+      #win { position: fixed; inset: 0; display: flex; flex-direction: column;
+             align-items: center; justify-content: center; gap: 12px;
+             text-align: center; padding: 24px; box-sizing: border-box;
+             z-index: 21; color: #1a1a1a;
              font: 600 32px/1.4 system-ui, sans-serif; }
       #win[hidden] { display: none; }
+      #win p { margin: 0; }
+      #win .again { font: 16px/1.4 system-ui, sans-serif; opacity: 0.65; }
       #touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
       #touch[hidden] { display: none; }
       /* Стик виден и в покое, иначе игрок не догадается, что левая половина
@@ -155,7 +159,10 @@
       <p class="hint for-touch">Кнопка «Рюкзак» — закрыть</p>
     </div>
     <div id="flash"></div>
-    <div id="win" hidden><p>Ты выбрался.</p></div>
+    <div id="win" hidden>
+      <p>Ты выбрался.</p>
+      <p class="again">Обнови страницу, чтобы пройти заново.</p>
+    </div>
     <div id="fatal" hidden><h1 id="fatal-title"></h1><pre id="fatal-body"></pre></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
