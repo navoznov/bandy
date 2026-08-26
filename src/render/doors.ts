@@ -9,10 +9,21 @@ const LEAF_MATERIAL = new THREE.MeshStandardMaterial({ color: 0x6b533c, roughnes
 const LOCK_MATERIAL = new THREE.MeshStandardMaterial({
   color: 0xb8a03a, roughness: 0.4, metalness: 0.6,
 });
+const LEAF_THICKNESS = 0.06;
 // Размеры одинаковы у всех дверей и всех замков, поэтому геометрия общая — как
 // и материалы выше. Из-за этого её нельзя освобождать при уничтожении одной цели.
-const LEAF_GEOMETRY = new THREE.BoxGeometry(DOOR.width, DOOR.height, 0.06);
+const LEAF_GEOMETRY = new THREE.BoxGeometry(DOOR.width, DOOR.height, LEAF_THICKNESS);
 const LOCK_GEOMETRY = new THREE.BoxGeometry(0.14, 0.2, 0.08);
+
+/**
+ * Петля стоит не ровно на краю проёма, а сдвинута внутрь на полтолщины полотна
+ * (0.03 м), и ровно на столько же укорочен вылет полотна от петли
+ * (`leaf.position.x` ниже). Сдвиг и укорочение взаимно гасятся, поэтому
+ * закрытое положение не меняется ни на миллиметр — проверено числами.
+ * Без этого сдвига распахнутая створка ложится толщиной ровно на петлю и на
+ * 3 см врезается в остаток стены рядом с проёмом (M4 финального ревью).
+ */
+const HINGE_SHIFT = LEAF_THICKNESS / 2;
 
 interface Leaf {
   pivot: THREE.Group;
@@ -56,12 +67,13 @@ export function buildDoors(level: Level, world: World): Doors {
     if (!room) continue;
     const onVerticalWall = doorOnVerticalWall(door, room);
 
-    // Петля у одного края проёма, полотно уходит от неё.
+    // Петля у одного края проёма (сдвинутого на HINGE_SHIFT, см. выше), полотно
+    // уходит от неё.
     const pivot = new THREE.Group();
     pivot.position.set(
-      onVerticalWall ? dx : dx - DOOR.width / 2,
+      onVerticalWall ? dx : dx - DOOR.width / 2 + HINGE_SHIFT,
       0,
-      onVerticalWall ? dz - DOOR.width / 2 : dz,
+      onVerticalWall ? dz - DOOR.width / 2 + HINGE_SHIFT : dz,
     );
     // Поворот на θ кладёт локальный +X в мировой (cos θ, -sin θ). Полотно обязано
     // заполнить проём: на вертикальной стене — уйти в +Z, а это θ = -π/2.
@@ -70,7 +82,7 @@ export function buildDoors(level: Level, world: World): Doors {
     pivot.rotation.y = closedAngle;
 
     const leaf = new THREE.Mesh(LEAF_GEOMETRY, LEAF_MATERIAL);
-    leaf.position.set(DOOR.width / 2, DOOR.height / 2, 0);
+    leaf.position.set(DOOR.width / 2 - HINGE_SHIFT, DOOR.height / 2, 0);
     leaf.userData['targetId'] = door.id;
     pivot.add(leaf);
     targets.push(leaf);
