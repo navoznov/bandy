@@ -3,6 +3,12 @@ export interface StartOverlay {
   isVisible(): boolean;
   /** Инвентарь закрывает экран целиком — под ним оверлей прячется. */
   setInventoryOpen(open: boolean): void;
+  /**
+   * Игра сама попросила захват обратно. Пока запрос в пути, паузу не показывать:
+   * захват выдаётся асинхронно, и без этого оверлей мигал бы на кадр при каждом
+   * закрытии рюкзака. Если запрос провалится, пауза появится — и это верно.
+   */
+  expectLock(): void;
   /** Игра кончилась: оверлей больше не нужен и сам не вернётся. */
   dismiss(): void;
 }
@@ -30,9 +36,11 @@ export function createStartOverlay(coarse: boolean): StartOverlay {
   let dismissed = false;
   let locked = false;
   let inventoryOpen = false;
+  let pendingLock = false;
+  let pendingTimer = 0;
 
   function apply(): void {
-    const next = !dismissed && !inventoryOpen && !locked;
+    const next = !dismissed && !inventoryOpen && !locked && !pendingLock;
     if (next === visible) return;
     // Первый показ считается снятым только когда игра действительно началась,
     // то есть по захвату. Иначе открытый до старта инвентарь превратил бы
@@ -50,10 +58,23 @@ export function createStartOverlay(coarse: boolean): StartOverlay {
   // Десктоп: оверлей ровно тогда, когда захвата нет. Escape отпускает захват и
   // этим же открывает паузу, закрытие инвентаря — тоже. Состояние приходит
   // событием, опрашивать его в кадре незачем.
+  function settlePending(): void {
+    if (!pendingLock) return;
+    pendingLock = false;
+    clearTimeout(pendingTimer);
+    apply();
+  }
+
   document.addEventListener('pointerlockchange', () => {
     locked = document.pointerLockElement !== null;
+    pendingLock = false;
+    clearTimeout(pendingTimer);
     apply();
   });
+
+  // Отказ приходит отдельным событием, а не через pointerlockchange. Без него
+  // ожидание висело бы до таймаута, и игрок смотрел бы в неуправляемую сцену.
+  document.addEventListener('pointerlockerror', settlePending);
 
   // Тач: Pointer Lock там не существует, а `isLocked()` всегда `true`, поэтому
   // завязать показ на захват нельзя. Первое касание снимает оверлей навсегда;
@@ -82,6 +103,14 @@ export function createStartOverlay(coarse: boolean): StartOverlay {
     isVisible: () => visible,
     setInventoryOpen(open) {
       inventoryOpen = open;
+      apply();
+    },
+    expectLock() {
+      pendingLock = true;
+      clearTimeout(pendingTimer);
+      // Страховка на браузер, который не пришлёт ни успеха, ни отказа: молчаливое
+      // ожидание навсегда — это тот самый замерший экран без объяснений.
+      pendingTimer = window.setTimeout(settlePending, 1000);
       apply();
     },
     dismiss() {

@@ -84,6 +84,7 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
     get state() { return active().state; },
     get scheme() { return active().scheme; },
     isLocked: () => active().isLocked(),
+    requestLock: () => active().requestLock(),
     consume: () => active().consume(),
     setInteractAvailable: (available) => active().setInteractAvailable(available),
   };

@@ -9,7 +9,7 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
   const pressed = new Set<string>();
   let locked = false;
 
-  canvas.addEventListener('click', () => {
+  function requestLock(): void {
     if (locked) return;
     // На iPhone Safari Pointer Lock не существует вовсе, и метод там undefined.
     // Десктопный источник остаётся живым после переключения на тач, а тап
@@ -27,7 +27,9 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
     Promise.resolve(canvas.requestPointerLock()).catch((error: unknown) => {
       console.warn('Захват курсора не удался:', error);
     });
-  });
+  }
+
+  canvas.addEventListener('click', requestLock);
 
   document.addEventListener('pointerlockchange', () => {
     locked = document.pointerLockElement === canvas;
@@ -61,6 +63,7 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
     state,
     scheme: 'desktop',
     isLocked: () => locked,
+    requestLock,
     // Экранной кнопки «Действие» на десктопе нет — подсвечивать нечего.
     setInteractAvailable() {},
     consume() {

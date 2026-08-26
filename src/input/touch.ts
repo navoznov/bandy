@@ -107,6 +107,7 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
     state,
     scheme: 'touch',
     isLocked: () => true, // на телефоне захватывать нечего, управление активно всегда
+    requestLock() {}, // и возвращать, соответственно, тоже нечего
     // Кнопка найдена при создании источника, поэтому в кадре нет ни поиска
     // по документу, ни ленивого кэша под него.
     setInteractAvailable(available) { useButton.disabled = !available; },

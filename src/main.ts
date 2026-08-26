@@ -172,7 +172,18 @@ renderer.setAnimationLoop((now) => {
 
     if (state.toggleInventory) {
       inventoryUi.toggle();
-      if (inventoryUi.isOpen() && document.pointerLockElement) document.exitPointerLock();
+      // Захват отпускается, потому что без курсора по списку не кликнуть. А на
+      // закрытии его надо вернуть, иначе игра остаётся без управления и стартовый
+      // оверлей показывает паузу, которой игрок не просил: он всего лишь закрыл
+      // рюкзак. Нажатие клавиши — пользовательский жест, и запрос из этого же
+      // кадра проходит. Если браузер всё же откажет, оверлей остаётся страховкой:
+      // «Нажми, чтобы продолжить» — это лучше молча замершего экрана.
+      if (inventoryUi.isOpen()) {
+        if (document.pointerLockElement) document.exitPointerLock();
+      } else {
+        start.expectLock();
+        input.requestLock();
+      }
     }
     const paused = inventoryUi.isOpen();
     start.setInventoryOpen(paused);
