@@ -72,10 +72,17 @@ export class World implements WorldView {
           this.locations.set(effect.item, { kind: 'inventory' });
           this.emit({ kind: 'itemTaken', item: effect.item });
           break;
-        case 'consume':
+        case 'consume': {
+          // Израсходованный предмет исчезает отовсюду, включая руку. Состояние
+          // это уже отражает — `held()` вернёт null, — но предмет в руке рисуется
+          // по подписке на `handChanged`, и без события меш остался бы висеть:
+          // ключ пропал из рюкзака, а в руке всё ещё есть.
+          const wasHeld = this.locations.get(effect.item)?.kind === 'hand';
           this.locations.set(effect.item, { kind: 'gone' });
           this.emit({ kind: 'itemGone', item: effect.item });
+          if (wasHeld) this.emit({ kind: 'handChanged', item: null });
           break;
+        }
         case 'destroy':
           this.destroyedIds.add(effect.object);
           this.emit({ kind: 'objectDestroyed', object: effect.object });

@@ -30,6 +30,16 @@ describe('World', () => {
     expect(w.held()).toBeNull();
     expect(w.inventory()).toEqual([]);
     expect(events).toContainEqual({ kind: 'itemGone', item: 'key_brass' });
+    // Одного состояния мало. Предмет в руке рисуется по подписке на handChanged,
+    // и без события меш остаётся висеть: ключ пропал из рюкзака, а в руке есть.
+    expect(events).toContainEqual({ kind: 'handChanged', item: null });
+  });
+
+  it('consume предмета не из руки руку не трогает', () => {
+    const { w, events } = world();
+    w.applyEffects([{ kind: 'take', item: 'key_brass' }]);
+    w.applyEffects([{ kind: 'consume', item: 'key_brass' }]);
+    expect(events.filter((e) => e.kind === 'handChanged')).toEqual([]);
   });
 
   it('destroy помечает объект уничтоженным', () => {
