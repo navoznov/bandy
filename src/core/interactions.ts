@@ -1,0 +1,84 @@
+import type { DoorDef, Effect, ItemLocation, Level } from './types';
+
+export type Outcome =
+  | { ok: true; prompt: string; effects: Effect[] }
+  | { ok: false; refusal: string };
+
+/** Ровно то, что разрешению нужно от мира. Позволяет обойтись без циклического импорта. */
+export interface WorldView {
+  readonly level: Level;
+  held(): string | null;
+  locationOf(item: string): ItemLocation | undefined;
+  isDestroyed(id: string): boolean;
+  isDoorOpen(id: string): boolean;
+}
+
+type Target =
+  | { kind: 'item'; id: string }
+  | { kind: 'lock'; id: string }
+  | { kind: 'door'; door: DoorDef };
+
+function classify(view: WorldView, targetId: string): Target | null {
+  if (view.level.itemDefs[targetId]) {
+    const location = view.locationOf(targetId);
+    return location?.kind === 'world' ? { kind: 'item', id: targetId } : null;
+  }
+
+  const lockedDoor = view.level.doors.find((d) => d.lock === targetId);
+  if (lockedDoor) {
+    return view.isDestroyed(targetId) ? null : { kind: 'lock', id: targetId };
+  }
+
+  const door = view.level.doors.find((d) => d.id === targetId);
+  if (door) return { kind: 'door', door };
+
+  return null;
+}
+
+function nameOf(view: WorldView, itemId: string): string {
+  return view.level.itemDefs[itemId]?.name ?? itemId;
+}
+
+/**
+ * Единственная точка принятия решения о взаимодействии.
+ * Вызывается и для подсказки, и для действия — поэтому подсказка не может соврать.
+ */
+export function resolveInteraction(view: WorldView, targetId: string): Outcome {
+  const target = classify(view, targetId);
+  if (!target) return { ok: false, refusal: 'Здесь не с чем взаимодействовать.' };
+
+  const held = view.held();
+
+  if (held !== null) {
+    const rule = view.level.interactions.find((r) => r.use === held && r.on === targetId);
+    if (rule) {
+      return { ok: true, prompt: `Использовать: ${nameOf(view, held)}`, effects: rule.effects };
+    }
+  }
+
+  switch (target.kind) {
+    case 'item':
+      return {
+        ok: true,
+        prompt: `Подобрать: ${nameOf(view, target.id)}`,
+        effects: [{ kind: 'take', item: target.id }],
+      };
+
+    case 'lock':
+      return held === null
+        ? { ok: false, refusal: 'Замок заперт. Нужно чем-то открыть.' }
+        : { ok: false, refusal: `${nameOf(view, held)} сюда не подходит.` };
+
+    case 'door': {
+      const { door } = target;
+      if (door.lock !== undefined && !view.isDestroyed(door.lock)) {
+        return { ok: false, refusal: 'Заперто. На двери висит замок.' };
+      }
+      return {
+        ok: true,
+        prompt: view.isDoorOpen(door.id) ? 'Закрыть дверь' : 'Открыть дверь',
+        effects: [{ kind: 'toggleDoor', door: door.id }],
+      };
+    }
+  }
+}

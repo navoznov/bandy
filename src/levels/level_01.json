@@ -1,0 +1,36 @@
+{
+  "id": "level_01",
+  "spawn": { "room": "hall", "x": 2, "z": 3, "yaw": 0 },
+
+  "rooms": [
+    { "id": "hall",       "rect": [0, 0, 8, 6],   "color": "#8b8b9f", "light": 0.9 },
+    { "id": "corridor_a", "rect": [8, 2, 6, 2],   "color": "#6f746f", "light": 0.6 },
+    { "id": "office",     "rect": [14, 0, 6, 6],  "color": "#8d8278", "light": 0.9 },
+    { "id": "exit_hall",  "rect": [14, 6, 3, 20], "color": "#5a5a60", "light": 0.4 }
+  ],
+
+  "doors": [
+    { "id": "d_hall_corr",   "between": ["hall", "corridor_a"],   "at": [8, 3] },
+    { "id": "d_corr_office", "between": ["corridor_a", "office"], "at": [14, 3],
+      "lock": "lock_front" },
+    { "id": "d_exit",        "between": ["office", "exit_hall"],  "at": [15.5, 6],
+      "sign": "EXIT" }
+  ],
+
+  "items": [
+    { "def": "key_brass", "room": "hall", "at": [6.8, 0.02, 3.7] }
+  ],
+
+  "triggers": [
+    { "id": "win", "room": "exit_hall", "rect": [14, 24, 3, 2], "effect": "win" }
+  ],
+
+  "interactions": [
+    { "use": "key_brass", "on": "lock_front",
+      "effects": [
+        { "destroy": "lock_front" },
+        { "consume": "key_brass" },
+        { "say": "Замок щёлкнул и упал на пол." }
+      ] }
+  ]
+}

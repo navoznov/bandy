@@ -96,7 +96,8 @@ npm i -D typescript vite vitest @types/three
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit && vitest run",
     "test:watch": "vitest"
   }
 }
@@ -137,6 +138,11 @@ export default defineConfig({
 ```
 
 `base` критичен: сайт живёт в подпапке репозитория.
+
+`npm test` намеренно начинается с `tsc --noEmit`. `vite build` типы не проверяет — он
+их просто срезает, — поэтому без этого шага `strict` и `noUncheckedIndexedAccess` из
+`tsconfig.json` не поймали бы ничего нигде, кроме редактора. Опечатка в идентификаторе
+предмета — ровно то, ради чего в проекте вообще взят TypeScript.
 
 - [ ] **Step 5: Создать `index.html`**
 
@@ -316,6 +322,18 @@ describe('validateLevel', () => {
     expect(errors.join(' ')).toContain('общей стене');
   });
 
+  it('ловит дверь на дальней стене комнаты, которой сосед не касается', () => {
+    const errors = errorsFor((l) => { l.doors[0]!.at = [0, 3]; });
+    expect(errors.join(' ')).toContain('общей стене');
+  });
+
+  it('принимает дверь на горизонтальной общей стене', () => {
+    const lvl = baseLevel();
+    lvl.rooms.push({ id: 'c', rect: [0, 6, 4, 4], color: '#888', light: 1 });
+    lvl.doors.push({ id: 'd_ac', between: ['a', 'c'], at: [2, 6] });
+    expect(validateLevel(lvl, itemDefs).ok).toBe(true);
+  });
+
   it('ловит пересечение комнат', () => {
     const errors = errorsFor((l) => { l.rooms[1]!.rect = [4, 2, 6, 2]; });
     expect(errors.join(' ')).toContain('пересекаются');
@@ -483,20 +501,39 @@ function contains(room: RoomDef, x: number, z: number): boolean {
 
 const EPS = 1e-9;
 
-/** Лежит ли точка двери на стене, общей для двух комнат. */
+/**
+ * Лежит ли точка двери на стене, общей для двух комнат.
+ *
+ * Сначала определяется координата, В КОТОРОЙ комнаты соприкасаются, и точка двери
+ * сверяется именно с ней. Проверять принадлежность точки любой из границ комнаты
+ * нельзя: дверь, поставленная на дальнюю внешнюю стену, прошла бы проверку, хотя
+ * второй комнаты там нет и близко.
+ */
 function onSharedWall(a: RoomDef, b: RoomDef, px: number, pz: number): boolean {
   const ba = roomBounds(a);
   const bb = roomBounds(b);
 
-  const touchesOnX = Math.abs(ba.x1 - bb.x0) < EPS || Math.abs(bb.x1 - ba.x0) < EPS;
-  const zOverlap = pz >= Math.max(ba.z0, bb.z0) && pz <= Math.min(ba.z1, bb.z1);
-  const xMatches = Math.abs(px - ba.x1) < EPS || Math.abs(px - ba.x0) < EPS;
-  if (touchesOnX && zOverlap && xMatches) return true;
+  let sharedX: number | null = null;
+  if (Math.abs(ba.x1 - bb.x0) < EPS) sharedX = ba.x1;
+  else if (Math.abs(bb.x1 - ba.x0) < EPS) sharedX = ba.x0;
 
-  const touchesOnZ = Math.abs(ba.z1 - bb.z0) < EPS || Math.abs(bb.z1 - ba.z0) < EPS;
-  const xOverlap = px >= Math.max(ba.x0, bb.x0) && px <= Math.min(ba.x1, bb.x1);
-  const zMatches = Math.abs(pz - ba.z1) < EPS || Math.abs(pz - ba.z0) < EPS;
-  return touchesOnZ && xOverlap && zMatches;
+  if (sharedX !== null && Math.abs(px - sharedX) < EPS) {
+    const from = Math.max(ba.z0, bb.z0);
+    const to = Math.min(ba.z1, bb.z1);
+    if (pz >= from && pz <= to) return true;
+  }
+
+  let sharedZ: number | null = null;
+  if (Math.abs(ba.z1 - bb.z0) < EPS) sharedZ = ba.z1;
+  else if (Math.abs(bb.z1 - ba.z0) < EPS) sharedZ = ba.z0;
+
+  if (sharedZ !== null && Math.abs(pz - sharedZ) < EPS) {
+    const from = Math.max(ba.x0, bb.x0);
+    const to = Math.min(ba.x1, bb.x1);
+    if (px >= from && px <= to) return true;
+  }
+
+  return false;
 }
 
 function overlap(a: RoomDef, b: RoomDef): boolean {
@@ -658,7 +695,7 @@ export function validateLevel(
 - [ ] **Step 5: Запустить тесты и убедиться, что они проходят**
 
 Run: `npm test src/core/validate.test.ts`
-Expected: PASS, 11 тестов.
+Expected: PASS, 13 тестов.
 
 - [ ] **Step 6: Коммит**
 
@@ -941,6 +978,15 @@ describe('resolveMove', () => {
     expect(result).toEqual({ x: 4.7, z: 3 });
   });
 
+  it('не запирает игрока, который уже оказался внутри стены', () => {
+    // Штатный сценарий: игрок стоит в проёме и закрывает дверь — коллайдер створки
+    // возвращается уже вокруг него. Выйти он обязан в любую сторону.
+    const out = resolveMove({ x: 5.1, z: 3 }, { x: -1, z: 0 }, R, [wallEast]);
+    expect(out.x).toBeCloseTo(4.1, 6);
+    const through = resolveMove({ x: 5.1, z: 3 }, { x: 1, z: 0 }, R, [wallEast]);
+    expect(through.x).toBeCloseTo(6.1, 6);
+  });
+
   it('пропускает игрока в дверной проём между кусками стены', () => {
     const left: Aabb = { x0: 5, x1: 5.2, z0: 0, z1: 2.5 };
     const right: Aabb = { x0: 5, x1: 5.2, z0: 3.5, z1: 10 };
@@ -969,6 +1015,13 @@ export interface Vec2 {
  * Двигает круг радиуса `radius` из `pos` на `delta`, не пуская его в прямоугольники.
  * Оси разрешаются по очереди — благодаря этому игрок скользит вдоль стены,
  * а не залипает при движении по диагонали.
+ *
+ * Инвариант: если стартовая позиция УЖЕ внутри прямоугольника, по этой оси обрезка
+ * не применяется и игрок движется свободно. Это намеренно. Такое положение возникает
+ * штатно: игрок стоит в проёме и закрывает дверь, коллайдер створки возвращается
+ * уже вокруг него. Из этого положения он обязан выйти, а не остаться запертым
+ * навсегда. Обычный кадр всегда стартует из разрешённой на прошлом кадре позиции,
+ * поэтому на нормальный ход движения это не влияет.
  */
 export function resolveMove(
   pos: Vec2,
@@ -980,35 +1033,39 @@ export function resolveMove(
   let z = pos.z;
 
   if (delta.x !== 0) {
-    x += delta.x;
+    let nextX = x + delta.x;
     for (const b of boxes) {
-      if (!overlaps(x, z, b, radius)) continue;
-      x = delta.x > 0 ? b.x0 - radius : b.x1 + radius;
+      if (z <= b.z0 - radius || z >= b.z1 + radius) continue;
+      if (delta.x > 0 && x <= b.x0 - radius && nextX > b.x0 - radius) {
+        nextX = Math.min(nextX, b.x0 - radius);
+      } else if (delta.x < 0 && x >= b.x1 + radius && nextX < b.x1 + radius) {
+        nextX = Math.max(nextX, b.x1 + radius);
+      }
     }
+    x = nextX;
   }
 
   if (delta.z !== 0) {
-    z += delta.z;
+    let nextZ = z + delta.z;
     for (const b of boxes) {
-      if (!overlaps(x, z, b, radius)) continue;
-      z = delta.z > 0 ? b.z0 - radius : b.z1 + radius;
+      if (x <= b.x0 - radius || x >= b.x1 + radius) continue;
+      if (delta.z > 0 && z <= b.z0 - radius && nextZ > b.z0 - radius) {
+        nextZ = Math.min(nextZ, b.z0 - radius);
+      } else if (delta.z < 0 && z >= b.z1 + radius && nextZ < b.z1 + radius) {
+        nextZ = Math.max(nextZ, b.z1 + radius);
+      }
     }
+    z = nextZ;
   }
 
   return { x, z };
-}
-
-/** Прямоугольник, раздутый на радиус: круг пересекает стену ровно тогда, когда центр внутри. */
-function overlaps(x: number, z: number, b: Aabb, radius: number): boolean {
-  return x > b.x0 - radius && x < b.x1 + radius
-      && z > b.z0 - radius && z < b.z1 + radius;
 }
 ```
 
 - [ ] **Step 4: Запустить тесты и убедиться, что они проходят**
 
 Run: `npm test src/core/collision.test.ts`
-Expected: PASS, 7 тестов.
+Expected: PASS, 8 тестов.
 
 - [ ] **Step 5: Коммит**
 
@@ -1944,7 +2001,9 @@ export function buildScene(level: Level): SceneBuild {
   scene.background = new THREE.Color(0x0d0d10);
   scene.fog = new THREE.Fog(0x0d0d10, 6, 34);
 
-  scene.add(new THREE.HemisphereLight(0xdfe4ff, 0x30302f, 1.1));
+  // Полусферический свет несёт основную освещённость: у него нет затухания с
+  // расстоянием, поэтому только он способен поднять дальние углы комнаты.
+  scene.add(new THREE.HemisphereLight(0xdfe4ff, 0x30302f, 2.4));
 
   const grid = makeGridTexture();
 
@@ -1967,8 +2026,12 @@ export function buildScene(level: Level): SceneBuild {
     ceiling.position.set(cx, ROOM.height, cz);
     scene.add(ceiling);
 
-    const lamp = new THREE.PointLight(0xfff2dd, room.light * 12, Math.max(width, depth) * 1.6, 2);
-    lamp.position.set(cx, ROOM.height - 0.4, cz);
+    // Точечный источник — акцент, а не основной свет. Затухание квадратичное
+    // (физически корректное с r155), поэтому яркость мала, а лампа отодвинута от
+    // потолка: на 0.4 м освещённость прямо над ней была в 200 раз выше, чем в
+    // дальнем углу, и потолок выжигался в белое пятно.
+    const lamp = new THREE.PointLight(0xfff2dd, room.light * 2, Math.max(width, depth) * 1.6, 2);
+    lamp.position.set(cx, ROOM.height - 0.75, cz);
     scene.add(lamp);
   }
 
@@ -1998,6 +2061,9 @@ const level = loaded.level;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.shadowMap.enabled = false;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Без тонмаппинга всё ярче единицы жёстко срезается в чистый белый, и любой
+// пересвет читается плоским диском вместо мягкого блика.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
 const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 60);
 camera.position.set(level.spawn.x, PLAYER.eyeHeight, level.spawn.z);
@@ -2046,12 +2112,14 @@ git commit -m "Add level data and room geometry rendering"
 ### Task 9: Игровой цикл, управление с клавиатуры и мыши, движение с коллизиями
 
 **Files:**
-- Create: `src/input/types.ts`, `src/input/desktop.ts`
+- Create: `src/input/types.ts`, `src/input/desktop.ts`, `src/core/movement.ts`
+- Test: `src/core/movement.test.ts`
 - Modify: `src/main.ts` — заменить статичную камеру на игровой цикл
 
 **Interfaces:**
 - Consumes: `resolveMove` из Task 4, `activeColliders` из Task 3, `World` из Task 6, `LOOK`/`PLAYER`/`MAX_DELTA_SECONDS` из Task 1
 - Produces:
+  - `moveDelta(move: { x: number; y: number }, yaw: number, speed: number, dt: number): Vec2` — Task 13 зовёт её же для виртуального стика
   - `interface InputState { move: { x: number; y: number }; look: { dx: number; dy: number }; interact: boolean; toggleInventory: boolean }`
   - `interface InputSource { state: InputState; consume(): void; isLocked(): boolean }`
   - `createDesktopInput(canvas: HTMLCanvasElement): InputSource`
@@ -2100,7 +2168,9 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
   let locked = false;
 
   canvas.addEventListener('click', () => {
-    if (!locked) void canvas.requestPointerLock();
+    // Chrome примерно 1.25 с после Escape не отдаёт захват и реджектит промис.
+    // Без catch это всплывает необработанным отказом.
+    if (!locked) canvas.requestPointerLock().catch(() => {});
   });
 
   document.addEventListener('pointerlockchange', () => {
@@ -2148,13 +2218,114 @@ export function createDesktopInput(canvas: HTMLCanvasElement): InputSource {
 
 Обрати внимание: `consume` пересчитывает `move` из набора зажатых клавиш и обнуляет одноразовые сигналы. Цикл читает `state` до вызова `consume`, поэтому порядок в кадре важен: сначала обновить `move`, потом использовать, потом сбросить. Ниже это учтено.
 
-- [ ] **Step 3: Переписать `src/main.ts` на игровой цикл**
+- [ ] **Step 3: Создать `src/core/movement.ts`**
+
+Перевод «куда нажали» в «куда сместиться» — чистая математика, и место ей в `core`,
+а не внутри игрового цикла. Причина не в красоте: знак здесь легко перепутать, а
+внутри `main.ts` такую ошибку ловят только ногами. Вторая причина — Task 13:
+виртуальный стик даёт то же самое `move`, и конвертация должна быть одна на двоих.
+
+```ts
+import type { Vec2 } from './collision';
+
+/**
+ * Переводит намерение игрока в смещение в мире за кадр.
+ *
+ * `move` задан в экранных осях: x = +1 вправо (D), y = -1 вперёд (W).
+ * Камера в мире смотрит в (-sin yaw, -cos yaw) — по той же оси, что и move.y,
+ * поэтому знак при move.y НЕ переворачивается. Проверено против three.js.
+ *
+ * Диагональ нормируется: W+D даёт ровно ту же длину шага, что и один W.
+ */
+export function moveDelta(
+  move: { x: number; y: number },
+  yaw: number,
+  speed: number,
+  dt: number,
+): Vec2 {
+  const length = Math.hypot(move.x, move.y);
+  if (length === 0) return { x: 0, z: 0 };
+  const step = (speed * dt) / length;
+  return {
+    x: (Math.sin(yaw) * move.y + Math.cos(yaw) * move.x) * step,
+    z: (Math.cos(yaw) * move.y - Math.sin(yaw) * move.x) * step,
+  };
+}
+```
+
+- [ ] **Step 4: Написать тесты `src/core/movement.test.ts` и прогнать их**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { moveDelta } from './movement';
+
+const W = { x: 0, y: -1 };
+const S = { x: 0, y: 1 };
+const A = { x: -1, y: 0 };
+const D = { x: 1, y: 0 };
+
+describe('moveDelta', () => {
+  it('при yaw = 0 W ведёт в -Z', () => {
+    const d = moveDelta(W, 0, 3, 0.1);
+    expect(d.x).toBeCloseTo(0);
+    expect(d.z).toBeCloseTo(-0.3);
+  });
+
+  it('при yaw = 0 D ведёт в +X', () => {
+    const d = moveDelta(D, 0, 3, 0.1);
+    expect(d.x).toBeCloseTo(0.3);
+    expect(d.z).toBeCloseTo(0);
+  });
+
+  it('поворот на 90 градусов вправо разворачивает W в +X', () => {
+    const d = moveDelta(W, -Math.PI / 2, 3, 0.1);
+    expect(d.x).toBeCloseTo(0.3);
+    expect(d.z).toBeCloseTo(0);
+  });
+
+  it('S идёт ровно против W при произвольном yaw', () => {
+    const forward = moveDelta(W, 0.7, 3, 0.1);
+    const back = moveDelta(S, 0.7, 3, 0.1);
+    expect(back.x).toBeCloseTo(-forward.x);
+    expect(back.z).toBeCloseTo(-forward.z);
+  });
+
+  it('A идёт ровно против D при произвольном yaw', () => {
+    const right = moveDelta(D, 0.7, 3, 0.1);
+    const left = moveDelta(A, 0.7, 3, 0.1);
+    expect(left.x).toBeCloseTo(-right.x);
+    expect(left.z).toBeCloseTo(-right.z);
+  });
+
+  it('вперёд и вбок перпендикулярны', () => {
+    const f = moveDelta(W, 1.1, 3, 0.1);
+    const r = moveDelta(D, 1.1, 3, 0.1);
+    expect(f.x * r.x + f.z * r.z).toBeCloseTo(0);
+  });
+
+  it('диагональ не быстрее прямой ходьбы', () => {
+    const straight = moveDelta(W, 0.4, 3, 0.1);
+    const diagonal = moveDelta({ x: 1, y: -1 }, 0.4, 3, 0.1);
+    expect(Math.hypot(diagonal.x, diagonal.z)).toBeCloseTo(Math.hypot(straight.x, straight.z));
+  });
+
+  it('без нажатий смещения нет', () => {
+    expect(moveDelta({ x: 0, y: 0 }, 1.2, 3, 0.1)).toEqual({ x: 0, z: 0 });
+  });
+});
+```
+
+Run: `npm test src/core/movement.test.ts`
+Expected: 8 passed.
+
+- [ ] **Step 5: Переписать `src/main.ts` на игровой цикл**
 
 ```ts
 import * as THREE from 'three';
 import { LOOK, MAX_DELTA_SECONDS, PLAYER } from './config';
 import { activeColliders, buildColliders } from './core/colliders';
 import { resolveMove } from './core/collision';
+import { moveDelta } from './core/movement';
 import { World } from './core/world';
 import { loadLevel } from './levels';
 import { createDesktopInput } from './input/desktop';
@@ -2173,6 +2344,9 @@ const allColliders = buildColliders(level);
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.shadowMap.enabled = false;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Без тонмаппинга всё ярче единицы жёстко срезается в чистый белый, и любой
+// пересвет читается плоским диском вместо мягкого блика.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
 const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 60);
 camera.rotation.order = 'YXZ';
@@ -2214,15 +2388,10 @@ renderer.setAnimationLoop((now) => {
     pitch -= state.look.dy * LOOK.sensitivity;
     pitch = Math.max(-LOOK.maxPitch, Math.min(LOOK.maxPitch, pitch));
 
-    const forward = state.move.y;
-    const strafe = state.move.x;
-    const length = Math.hypot(forward, strafe);
-    if (length > 0) {
-      const step = (PLAYER.speed * dt) / length;
-      const dx = (Math.sin(yaw) * -forward + Math.cos(yaw) * strafe) * step;
-      const dz = (Math.cos(yaw) * -forward - Math.sin(yaw) * strafe) * step;
+    const delta = moveDelta(state.move, yaw, PLAYER.speed, dt);
+    if (delta.x !== 0 || delta.z !== 0) {
       const boxes = activeColliders(allColliders, world.openDoors());
-      const next = resolveMove(player, { x: dx, z: dz }, PLAYER.radius, boxes);
+      const next = resolveMove(player, delta, PLAYER.radius, boxes);
       player.x = next.x;
       player.z = next.z;
     }
@@ -2238,7 +2407,7 @@ renderer.setAnimationLoop((now) => {
 });
 ```
 
-- [ ] **Step 4: Проверить глазами и ногами**
+- [ ] **Step 6: Проверить глазами и ногами**
 
 Run: `npm run dev`
 
@@ -2247,14 +2416,17 @@ Run: `npm run dev`
 2. `W` идёт вперёд туда, куда смотришь; `A` и `D` дают шаг вбок; `S` назад.
 3. Диагональ (`W`+`D`) не быстрее прямой ходьбы.
 4. В стену пройти нельзя, при движении под углом игрок скользит вдоль неё.
-5. Через дверные проёмы игрок проходит: сейчас створок нет, они появятся в Task 10.
+5. В дверных проёмах игрок упирается в невидимую преграду — это ОЖИДАЕМО.
+   Коллайдер закрытой створки существует с Task 3, а меш створки появится только
+   в Task 10 вместе с открыванием по `E`. То есть до Task 10 уровень проходим
+   только в пределах стартовой комнаты, и проверять надо там.
 6. `Escape` отпускает курсор, движение останавливается.
 7. Свернуть вкладку на десять секунд, вернуться — игрока не выбросило сквозь стены и не дёрнуло вперёд.
 
-- [ ] **Step 5: Коммит**
+- [ ] **Step 7: Коммит**
 
 ```bash
-git add src/input src/main.ts
+git add src/input src/core/movement.ts src/core/movement.test.ts src/main.ts
 git commit -m "Add game loop with keyboard and mouse controls"
 ```
 
@@ -2264,6 +2436,9 @@ git commit -m "Add game loop with keyboard and mouse controls"
 
 **Files:**
 - Create: `src/render/doors.ts`, `src/ui/hud.ts`
+- Modify: `src/core/validate.ts` — вынести определение ориентации двери
+- Modify: `src/core/colliders.ts` — начать пользоваться вынесенным
+- Test: `src/core/validate.test.ts`
 - Modify: `index.html` — добавить разметку HUD
 - Modify: `src/render/scene.ts` — добавить створки и замки в сцену и в список целей
 - Modify: `src/main.ts` — луч прицела и обработка взаимодействия
@@ -2271,7 +2446,7 @@ git commit -m "Add game loop with keyboard and mouse controls"
 **Interfaces:**
 - Consumes: `World.describe`/`World.interact` из Task 7, `INTERACT_RANGE` из Task 1
 - Produces:
-  - `buildDoors(level, world): { group: THREE.Group; targets: THREE.Object3D[]; update(dt: number): void }`
+  - `buildDoors(level, world): { group: THREE.Group; targets: THREE.Object3D[]; update(dt: number, player: Vec2): void }`
   - `createHud(): { setPrompt(text: string | null): void; setRefusal(text: string | null): void; flash(text: string): void }`
   - Соглашение: у каждого меша-цели в `userData.targetId` лежит идентификатор для `World.describe`
 
@@ -2323,32 +2498,110 @@ export function createHud(): Hud {
 
   let flashUntil = 0;
 
-  function show(text: string | null, refusal: boolean): void {
-    if (performance.now() < flashUntil) return;
+  // `!` здесь обязателен: TypeScript сбрасывает сужение типа на объявлении функции,
+  // потому что оно поднимается и компилятор не знает, что вызов будет после проверки.
+  // На стрелке в `const` сужение сохранилось бы, но читаемость от этого не выигрывает.
+  function writePrompt(text: string | null, refusal: boolean): void {
     prompt!.textContent = text ?? '';
     prompt!.classList.toggle('visible', text !== null);
     prompt!.classList.toggle('refusal', refusal);
+  }
+
+  /**
+   * Прицел отражает то, на что игрок наведён ПРЯМО СЕЙЧАС, и тост его не трогает:
+   * иначе любое сообщение `say` красило бы прицел активным жёлтым посреди пустой
+   * комнаты и на две секунды прятало бы настоящий отказ.
+   */
+  function aim(text: string | null, refusal: boolean): void {
     reticle!.classList.toggle('active', text !== null && !refusal);
+    if (performance.now() < flashUntil) return;
+    writePrompt(text, refusal);
   }
 
   return {
-    setPrompt: (text) => show(text, false),
-    setRefusal: (text) => show(text, true),
+    setPrompt: (text) => aim(text, false),
+    setRefusal: (text) => aim(text, true),
     flash(text) {
-      flashUntil = 0;
-      show(text, false);
+      writePrompt(text, false);
       flashUntil = performance.now() + 2200;
     },
   };
 }
 ```
 
-- [ ] **Step 3: Создать `src/render/doors.ts`**
+- [ ] **Step 3: Вынести ориентацию двери в `src/core/validate.ts`**
+
+От одного и того же факта — вдоль какой оси идёт стена с проёмом — зависят и
+коллайдер двери, и её полотно. Считать его в двух файлах порознь нельзя: разъедутся
+— игрок будет видеть одно, а упираться в другое, и поймает это только глаз. В
+`render/` тестов нет, так что больше поймать некому.
+
+Дописать в `src/core/validate.ts` сразу после объявления `EPS`:
+
+```ts
+/**
+ * Прорезан ли проём в стене, идущей вдоль оси Z (то есть на границе по X).
+ *
+ * Единственное место, где этот факт вычисляется. От него зависят и коллайдер
+ * двери (`core/colliders.ts`), и её полотно с петлёй (`render/doors.ts`).
+ */
+export function doorOnVerticalWall(door: DoorDef, room: RoomDef): boolean {
+  const b = roomBounds(room);
+  const [dx] = door.at;
+  return Math.abs(dx - b.x0) < EPS || Math.abs(dx - b.x1) < EPS;
+}
+```
+
+В `src/core/colliders.ts` добавить импорт и заменить вычисление на вызов:
+
+```ts
+import { doorOnVerticalWall, roomBounds } from './validate';
+```
+
+```ts
+  const room = level.rooms.find((r) => r.id === door.between[0])!;
+  const onVerticalWall = doorOnVerticalWall(door, room);
+```
+
+(строка `const b = roomBounds(room);` в `doorCollider` больше не нужна — она была
+нужна только ради этой проверки.)
+
+- [ ] **Step 4: Дописать тест в `src/core/validate.test.ts` и прогнать**
+
+```ts
+describe('doorOnVerticalWall', () => {
+  const hall = { id: 'hall', rect: [0, 0, 8, 6], color: '#888', light: 1 } as RoomDef;
+
+  it('дверь на восточной стене комнаты лежит на вертикальной стене', () => {
+    const door = { id: 'd', between: ['hall', 'other'], at: [8, 3] } as DoorDef;
+    expect(doorOnVerticalWall(door, hall)).toBe(true);
+  });
+
+  it('дверь на западной стене тоже', () => {
+    const door = { id: 'd', between: ['hall', 'other'], at: [0, 3] } as DoorDef;
+    expect(doorOnVerticalWall(door, hall)).toBe(true);
+  });
+
+  it('дверь на южной стене лежит на горизонтальной', () => {
+    const door = { id: 'd', between: ['hall', 'other'], at: [4, 6] } as DoorDef;
+    expect(doorOnVerticalWall(door, hall)).toBe(false);
+  });
+});
+```
+
+Импорты в шапке файла дополнить `doorOnVerticalWall`, а типы — `DoorDef`, `RoomDef`,
+если их там ещё нет.
+
+Run: `npm test src/core/validate.test.ts`
+Expected: все зелёные, включая три новых.
+
+- [ ] **Step 5: Создать `src/render/doors.ts`**
 
 ```ts
 import * as THREE from 'three';
 import { DOOR } from '../config';
-import { roomBounds } from '../core/validate';
+import { doorOnVerticalWall } from '../core/validate';
+import type { Vec2 } from '../core/collision';
 import type { Level } from '../core/types';
 import type { World } from '../core/world';
 
@@ -2356,9 +2609,16 @@ const LEAF_MATERIAL = new THREE.MeshStandardMaterial({ color: 0x6b533c, roughnes
 const LOCK_MATERIAL = new THREE.MeshStandardMaterial({
   color: 0xb8a03a, roughness: 0.4, metalness: 0.6,
 });
+// Размеры одинаковы у всех дверей и всех замков, поэтому геометрия общая — как
+// и материалы выше. Из-за этого её нельзя освобождать при уничтожении одной цели.
+const LEAF_GEOMETRY = new THREE.BoxGeometry(DOOR.width, DOOR.height, 0.06);
+const LOCK_GEOMETRY = new THREE.BoxGeometry(0.14, 0.2, 0.08);
 
 interface Leaf {
   pivot: THREE.Group;
+  /** Стена стоит поперёк оси X. От этого зависит знак четверти оборота. */
+  onVerticalWall: boolean;
+  at: Vec2;
   closedAngle: number;
   openAngle: number;
   progress: number; // 0 закрыта, 1 открыта
@@ -2368,7 +2628,21 @@ interface Leaf {
 export interface Doors {
   group: THREE.Group;
   targets: THREE.Object3D[];
-  update(dt: number): void;
+  update(dt: number, player: Vec2): void;
+}
+
+/**
+ * Куда распахнуть створку, чтобы она ушла ОТ игрока, а не ему в лицо (спека §9).
+ *
+ * Поворот на +π/2 переводит направление полотна +Z → +X → -Z → -X. Закрытая
+ * створка на вертикальной стене смотрит в +Z, на горизонтальной — в +X, поэтому
+ * знак четверти оборота у этих двух случаев противоположный. Проверено на three.js.
+ */
+function openAngleAwayFrom(leaf: Leaf, player: Vec2): number {
+  const quarter = Math.PI / 2;
+  return leaf.onVerticalWall
+    ? leaf.closedAngle + (player.x < leaf.at.x ? quarter : -quarter)
+    : leaf.closedAngle + (player.z < leaf.at.z ? -quarter : quarter);
 }
 
 export function buildDoors(level: Level, world: World): Doors {
@@ -2380,8 +2654,7 @@ export function buildDoors(level: Level, world: World): Doors {
     const [dx, dz] = door.at;
     const room = level.rooms.find((r) => r.id === door.between[0]);
     if (!room) continue;
-    const b = roomBounds(room);
-    const onVerticalWall = Math.abs(dx - b.x0) < 1e-9 || Math.abs(dx - b.x1) < 1e-9;
+    const onVerticalWall = doorOnVerticalWall(door, room);
 
     // Петля у одного края проёма, полотно уходит от неё.
     const pivot = new THREE.Group();
@@ -2390,11 +2663,13 @@ export function buildDoors(level: Level, world: World): Doors {
       0,
       onVerticalWall ? dz - DOOR.width / 2 : dz,
     );
-    const closedAngle = onVerticalWall ? Math.PI / 2 : 0;
+    // Поворот на θ кладёт локальный +X в мировой (cos θ, -sin θ). Полотно обязано
+    // заполнить проём: на вертикальной стене — уйти в +Z, а это θ = -π/2.
+    // При +π/2 створка встаёт на целую ширину двери мимо проёма. Проверено числами.
+    const closedAngle = onVerticalWall ? -Math.PI / 2 : 0;
     pivot.rotation.y = closedAngle;
 
-    const geometry = new THREE.BoxGeometry(DOOR.width, DOOR.height, 0.06);
-    const leaf = new THREE.Mesh(geometry, LEAF_MATERIAL);
+    const leaf = new THREE.Mesh(LEAF_GEOMETRY, LEAF_MATERIAL);
     leaf.position.set(DOOR.width / 2, DOOR.height / 2, 0);
     leaf.userData['targetId'] = door.id;
     pivot.add(leaf);
@@ -2403,14 +2678,16 @@ export function buildDoors(level: Level, world: World): Doors {
     group.add(pivot);
     leaves.set(door.id, {
       pivot,
+      onVerticalWall,
+      at: { x: dx, z: dz },
       closedAngle,
-      openAngle: closedAngle - Math.PI / 2,
+      openAngle: closedAngle, // настоящий угол считается в момент открывания
       progress: 0,
       target: 0,
     });
 
     if (door.lock) {
-      const lock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.08), LOCK_MATERIAL);
+      const lock = new THREE.Mesh(LOCK_GEOMETRY, LOCK_MATERIAL);
       lock.position.set(DOOR.width * 0.82, 1.15, 0.07);
       lock.userData['targetId'] = door.lock;
       pivot.add(lock);
@@ -2427,17 +2704,18 @@ export function buildDoors(level: Level, world: World): Doors {
       const leaf = leaves.get(event.door);
       if (leaf) leaf.target = 0;
     }
-    if (event.kind === 'objectDestroyed') {
-      const mesh = targets.find((t) => t.userData['targetId'] === event.object);
-      mesh?.removeFromParent();
-    }
+    // Уничтожение цели обрабатывает scene.ts: правило одно для замков и предметов.
   });
 
   return {
     group,
     targets,
-    update(dt) {
+    update(dt, player) {
       for (const leaf of leaves.values()) {
+        // Сторону выбираем в момент начала хода: только тогда известно, где игрок.
+        if (leaf.target === 1 && leaf.progress === 0) {
+          leaf.openAngle = openAngleAwayFrom(leaf, player);
+        }
         if (leaf.progress === leaf.target) continue;
         const step = dt / DOOR.openSeconds;
         leaf.progress = leaf.target > leaf.progress
@@ -2452,7 +2730,7 @@ export function buildDoors(level: Level, world: World): Doors {
 }
 ```
 
-- [ ] **Step 4: Подключить двери в `src/render/scene.ts`**
+- [ ] **Step 6: Подключить двери в `src/render/scene.ts`**
 
 Изменить сигнатуру и тело:
 
@@ -2472,6 +2750,10 @@ import type { World } from '../core/world';
 ```ts
 export interface SceneBuild {
   scene: THREE.Scene;
+  /**
+   * Живой список целей луча. Уничтоженная цель удаляется отсюда, а не только
+   * из сцены. Задача 11 дописывает сюда предметы.
+   */
   interactables: THREE.Object3D[];
   doors: Doors;
 }
@@ -2485,10 +2767,26 @@ export interface SceneBuild {
   const doors = buildDoors(level, world);
   scene.add(doors.group);
 
-  return { scene, interactables: [...doors.targets], doors };
+  const interactables: THREE.Object3D[] = [...doors.targets];
+
+  // Убрать меш из сцены мало. Raycaster не смотрит ни на `visible`, ни на родителя —
+  // только на слои, — и продолжил бы бить по последней мировой матрице удалённого
+  // объекта. Замок висит ближе полотна, а `classify` для уничтоженного возвращает
+  // null, так что отпертая дверь навсегда отвечала бы «здесь не с чем
+  // взаимодействовать» и больше не открывалась. Список целей ведём здесь, чтобы
+  // правило было одно и для замков, и для предметов из задачи 11.
+  world.on((event) => {
+    if (event.kind !== 'objectDestroyed') return;
+    const index = interactables.findIndex((t) => t.userData['targetId'] === event.object);
+    if (index === -1) return;
+    interactables[index]?.removeFromParent();
+    interactables.splice(index, 1);
+  });
+
+  return { scene, interactables, doors };
 ```
 
-- [ ] **Step 5: Добавить луч прицела и взаимодействие в `src/main.ts`**
+- [ ] **Step 7: Добавить луч прицела и взаимодействие в `src/main.ts`**
 
 Добавить импорты:
 
@@ -2504,6 +2802,8 @@ const { scene, interactables, doors } = buildScene(level, world);
 const hud = createHud();
 const raycaster = new THREE.Raycaster();
 raycaster.far = INTERACT_RANGE;
+/** Центр экрана. Вынесен из цикла: в кадре нельзя мусорить аллокациями. */
+const SCREEN_CENTER = new THREE.Vector2(0, 0);
 
 world.on((event) => {
   if (event.kind === 'said') hud.flash(event.text);
@@ -2513,9 +2813,15 @@ world.on((event) => {
 И внутри цикла, перед `renderer.render`, вставить:
 
 ```ts
-  doors.update(dt);
+  doors.update(dt, player);
 
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  // Матрицы обновляются внутри render, то есть уже после этого места. Без явного
+  // обновления луч бил бы туда, куда игрок смотрел кадр назад, и по створке в том
+  // положении, в котором она была кадр назад.
+  camera.updateMatrixWorld();
+  doors.group.updateMatrixWorld(true);
+
+  raycaster.setFromCamera(SCREEN_CENTER, camera);
   const hit = raycaster.intersectObjects(interactables, false)[0];
   const targetId = hit?.object.userData['targetId'] as string | undefined;
 
@@ -2526,11 +2832,14 @@ world.on((event) => {
     if (outcome.ok) hud.setPrompt(outcome.prompt);
     else hud.setRefusal(outcome.refusal);
 
-    if (state.interact) world.interact(targetId);
+    if (state.interact && input.isLocked()) world.interact(targetId);
   }
 ```
 
-- [ ] **Step 6: Проверить глазами**
+Блок ставится после строк `camera.position.set(...)` и `camera.rotation.set(...)`
+и перед `renderer.render(...)`.
+
+- [ ] **Step 8: Проверить глазами**
 
 Run: `npm run dev`
 
@@ -2541,11 +2850,14 @@ Run: `npm run dev`
 4. На двери `d_corr_office` виден жёлтый замок, подсказка на самой двери — «Заперто. На двери висит замок.» с красноватым фоном.
 5. Наведение на замок без предмета в руках даёт «Замок заперт. Нужно чем-то открыть.»
 6. Подсказка исчезает, когда отходишь дальше 2.5 м.
+7. Замок на `d_corr_office` видно и достаёт луч со стороны коридора, а не только
+   изнутри офиса: подходить к нему игрок будет именно оттуда.
 
-- [ ] **Step 7: Коммит**
+- [ ] **Step 9: Коммит**
 
 ```bash
-git add index.html src/render/doors.ts src/render/scene.ts src/ui/hud.ts src/main.ts
+git add index.html src/core/validate.ts src/core/validate.test.ts src/core/colliders.ts \
+  src/render/doors.ts src/render/scene.ts src/ui/hud.ts src/main.ts
 git commit -m "Add reticle targeting, prompts, animated doors and locks"
 ```
 
@@ -2564,7 +2876,7 @@ git commit -m "Add reticle targeting, prompts, animated doors and locks"
 **Interfaces:**
 - Consumes: `World` из Task 6 и 7, `ItemDef` из Task 2
 - Produces:
-  - `buildItems(level, world): { group: THREE.Group; targets: THREE.Object3D[] }`
+  - `buildItems(level): { group: THREE.Group; targets: THREE.Object3D[] }`
   - `createHand(): { scene: THREE.Scene; camera: THREE.PerspectiveCamera; setItem(id: string | null): void }`
   - `createInventoryUi(world): { isOpen(): boolean; toggle(): void; close(): void }`
 
@@ -2573,40 +2885,35 @@ git commit -m "Add reticle targeting, prompts, animated doors and locks"
 ```ts
 import * as THREE from 'three';
 import type { Level } from '../core/types';
-import type { World } from '../core/world';
 
 const ITEM_MATERIAL = new THREE.MeshStandardMaterial({
   color: 0xd9b64a, roughness: 0.35, metalness: 0.7,
 });
 
-/** Форма предмета в мире. Моделей нет, поэтому все предметы — небольшие бруски. */
-export function itemGeometry(): THREE.BufferGeometry {
-  return new THREE.BoxGeometry(0.09, 0.03, 0.22);
-}
+/**
+ * Форма предмета в мире. Моделей нет, поэтому все предметы — небольшие бруски.
+ * Геометрия общая на все предметы и на руку, поэтому её нельзя освобождать
+ * при исчезновении одного предмета.
+ */
+export const ITEM_GEOMETRY = new THREE.BoxGeometry(0.09, 0.03, 0.22);
 
-export function buildItems(level: Level, world: World): {
+export function buildItems(level: Level): {
   group: THREE.Group;
   targets: THREE.Object3D[];
 } {
   const group = new THREE.Group();
   const targets: THREE.Object3D[] = [];
-  const meshes = new Map<string, THREE.Mesh>();
 
   for (const placement of level.items) {
-    const mesh = new THREE.Mesh(itemGeometry(), ITEM_MATERIAL);
+    const mesh = new THREE.Mesh(ITEM_GEOMETRY, ITEM_MATERIAL);
     mesh.position.set(placement.at[0], placement.at[1], placement.at[2]);
     mesh.userData['targetId'] = placement.def;
     group.add(mesh);
     targets.push(mesh);
-    meshes.set(placement.def, mesh);
   }
 
-  world.on((event) => {
-    if (event.kind === 'itemTaken' || event.kind === 'itemGone') {
-      meshes.get(event.item)?.removeFromParent();
-    }
-  });
-
+  // Убирает подобранный предмет из сцены НЕ этот модуль, а scene.ts: он же ведёт
+  // список целей луча, и снять меш нужно из обоих мест одновременно.
   return { group, targets };
 }
 ```
@@ -2617,7 +2924,7 @@ export function buildItems(level: Level, world: World): {
 
 ```ts
 import * as THREE from 'three';
-import { itemGeometry } from './items';
+import { ITEM_GEOMETRY } from './items';
 
 const HELD_MATERIAL = new THREE.MeshStandardMaterial({
   color: 0xe8c65a, roughness: 0.3, metalness: 0.7,
@@ -2637,7 +2944,7 @@ export function createHand(): Hand {
   const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 2);
   camera.position.set(0, 0, 0);
 
-  const mesh = new THREE.Mesh(itemGeometry(), HELD_MATERIAL);
+  const mesh = new THREE.Mesh(ITEM_GEOMETRY, HELD_MATERIAL);
   mesh.position.set(0.24, -0.19, -0.5);
   mesh.rotation.set(0.2, -0.5, 0.35);
   mesh.visible = false;
@@ -2707,24 +3014,25 @@ export function createInventoryUi(world: World): InventoryUi {
     for (const id of items) {
       const entry = document.createElement('li');
       entry.textContent = world.level.itemDefs[id]?.name ?? id;
-      if (id === held) entry.classList.add('held');
-      entry.addEventListener('click', () => {
-        world.setHeld(held === id ? null : id);
-        render();
-      });
+      // render вручную звать не надо: setHeld эмитит handChanged, а на него
+      // подписан этот же render. Иначе список перерисуется дважды, причём второй
+      // раз — из обработчика на строке, которую первая перерисовка уже выбросила.
+      entry.addEventListener('click', () => world.setHeld(id));
       list!.append(entry);
     }
 
-    // Предмет в руках тоже показывается в списке, поэтому пусто только когда нет ничего.
-    empty!.hidden = items.length > 0 || held !== null;
-
-    if (held !== null && !items.includes(held)) {
+    // Предмет в руках в world.inventory() не попадает: setHeld переводит его
+    // в 'hand', а inventoryItems отдаёт только 'inventory'. Поэтому он не
+    // подсвечивается в списке, а дописывается отдельной строкой.
+    if (held !== null) {
       const entry = document.createElement('li');
       entry.textContent = `${world.level.itemDefs[held]?.name ?? held} (в руках)`;
       entry.classList.add('held');
-      entry.addEventListener('click', () => { world.setHeld(null); render(); });
+      entry.addEventListener('click', () => world.setHeld(null));
       list!.append(entry);
     }
+
+    empty!.hidden = items.length > 0 || held !== null;
   }
 
   world.on((event) => {
@@ -2746,17 +3054,46 @@ export function createInventoryUi(world: World): InventoryUi {
 
 - [ ] **Step 5: Подключить предметы в `src/render/scene.ts`**
 
-Добавить импорт `import { buildItems } from './items';` и заменить хвост функции:
+**Внимание.** Живой список `interactables` и подписка, которая из него вычищает,
+уже есть в файле после задачи 10. Их надо ДОПОЛНИТЬ, а не заменить. Если вернуть
+на их место `return { scene, interactables: [...], doors }` со свежим массивом,
+вернётся дефект, ради которого задача 10 гоняла раунд правок: отпертый замок
+навсегда перехватывал бы луч, и дверь больше не открылась бы. Именно эта задача
+делает тот путь достижимым, так что поломка была бы не теоретической.
+
+Добавить импорт `import { buildItems } from './items';`.
+
+Строку создания предметов вставить сразу после дверей:
 
 ```ts
-  const doors = buildDoors(level, world);
-  scene.add(doors.group);
-
-  const items = buildItems(level, world);
+  const items = buildItems(level);
   scene.add(items.group);
-
-  return { scene, interactables: [...doors.targets, ...items.targets], doors };
 ```
+
+Начальное наполнение списка дополнить предметами:
+
+```ts
+  const interactables: THREE.Object3D[] = [...doors.targets, ...items.targets];
+```
+
+А существующую подписку расширить: подобранный предмет обязан исчезать из списка
+целей ровно так же, как уничтоженный замок. Иначе после подбора ключа луч
+продолжал бы находить его на полу и отвечать отказом.
+
+```ts
+  world.on((event) => {
+    let gone: string | null = null;
+    if (event.kind === 'objectDestroyed') gone = event.object;
+    if (event.kind === 'itemTaken' || event.kind === 'itemGone') gone = event.item;
+    if (gone === null) return;
+    const index = interactables.findIndex((t) => t.userData['targetId'] === gone);
+    if (index === -1) return;
+    interactables[index]?.removeFromParent();
+    interactables.splice(index, 1);
+  });
+```
+
+`return { scene, interactables, doors };` остаётся как есть.
 
 - [ ] **Step 6: Подключить руку и паузу в `src/main.ts`**
 
@@ -2784,7 +3121,8 @@ world.on((event) => {
   hand.resize(width / height);
 ```
 
-Внутри цикла в самое начало, до всей логики:
+Внутри цикла сразу после строки `const state = input.state;` (раньше нельзя —
+`state` там ещё не объявлена):
 
 ```ts
   if (state.toggleInventory) {
@@ -2813,7 +3151,8 @@ Run: `npm run dev`
 
 Проверить по списку:
 1. В `hall` на полу лежит золотистый ключ, подсказка «Подобрать: Латунный ключ».
-2. `E` подбирает его, меш исчезает.
+2. `E` подбирает его, меш исчезает — и наведение на то место, где он лежал,
+   больше не даёт никакой подсказки, даже отказа.
 3. `I` открывает инвентарь, игра встаёт на паузу, курсор освобождается, мышь больше не крутит камеру.
 4. Клик по строке берёт ключ в руки: строка подсвечивается, в правом нижнем углу появляется предмет.
 5. `I` закрывает инвентарь, клик по экрану возвращает захват курсора.
@@ -2851,7 +3190,7 @@ git commit -m "Add world items, inventory overlay and held item rendering"
 ```ts
 import * as THREE from 'three';
 import { DOOR, ROOM } from '../config';
-import { roomBounds } from '../core/validate';
+import { doorOnVerticalWall, roomBounds } from '../core/validate';
 import type { Level } from '../core/types';
 
 /** Текст рисуется на канвасе: файлов-текстур в проекте нет. */
@@ -2885,10 +3224,12 @@ export function buildSigns(level: Level): THREE.Group {
     if (!door.sign) continue;
 
     const [dx, dz] = door.at;
+    // Табличка вешается со стороны комнаты `between[0]` — той, ИЗ которой в дверь
+    // входят. Сторону нельзя зашивать константой: PlaneGeometry односторонняя, и
+    // повешенная не с той стороны табличка уедет внутрь стены и отвернётся от игрока.
     const room = level.rooms.find((r) => r.id === door.between[0]);
     if (!room) continue;
     const b = roomBounds(room);
-    const onVerticalWall = Math.abs(dx - b.x0) < 1e-9 || Math.abs(dx - b.x1) < 1e-9;
 
     // MeshBasicMaterial не зависит от освещения: табличка останется яркой,
     // когда в комплексе позже выключат свет.
@@ -2898,25 +3239,37 @@ export function buildSigns(level: Level): THREE.Group {
     const y = DOOR.height + (ROOM.height - DOOR.height) / 2;
     const offset = ROOM.wallThickness / 2 + 0.02;
 
-    if (onVerticalWall) {
-      plate.position.set(dx - offset, y, dz);
-      plate.rotation.y = -Math.PI / 2;
-    } else {
-      plate.position.set(dx, y, dz - offset);
-      plate.rotation.y = Math.PI;
-    }
+    // Нормаль таблички смотрит в комнату. Проём лежит на той границе комнаты,
+    // к которой он ближе, и с этой стороны стены нужная нам сторона — внутренняя.
+    const normal = doorOnVerticalWall(door, room)
+      ? new THREE.Vector3(Math.abs(dx - b.x1) < Math.abs(dx - b.x0) ? -1 : 1, 0, 0)
+      : new THREE.Vector3(0, 0, Math.abs(dz - b.z1) < Math.abs(dz - b.z0) ? -1 : 1);
+    plate.rotation.y = Math.atan2(normal.x, normal.z);
+    plate.position.set(dx, y, dz).addScaledVector(normal, offset);
 
     group.add(plate);
 
-    const glow = new THREE.PointLight(0x7dff9b, 3, 4, 2);
-    glow.position.copy(plate.position);
+    // Лампа отодвинута от стены, а не посажена на саму табличку. Затухание
+    // физически корректное (decay 2), поэтому источник на 0.12 м от стены дал бы
+    // освещённость около 3 / 0.12² ≈ 200 и стена вокруг таблички превратилась бы
+    // в плоское белое пятно — ровно то, что уже случилось с потолком в задаче 8.
+    // Здесь 0.5 / 0.62² ≈ 1.3: ореол заметен, пересвета нет.
+    const glow = new THREE.PointLight(0x7dff9b, 0.5, 3, 2);
+    glow.position.copy(plate.position).addScaledVector(normal, 0.5);
     group.add(glow);
   }
 
   return group;
 }
 
-/** Белая стена и сильный свет в дальнем торце финального коридора. */
+/**
+ * Белая стена и сильный свет в дальнем торце финального коридора.
+ *
+ * Допущение: коридор идёт вдоль +Z, а дальний торец — у `z1`. В уровне 1 так и
+ * есть (`exit_hall` тянется с z=6 до z=26, игрок входит со стороны z=6). Обобщать
+ * на четыре ориентации незачем: выходной коридор в игре один, а ошибка была бы
+ * видна сразу — белая стена оказалась бы за спиной.
+ */
 export function buildExitGlow(level: Level): THREE.Group {
   const group = new THREE.Group();
 
@@ -2930,7 +3283,12 @@ export function buildExitGlow(level: Level): THREE.Group {
       new THREE.PlaneGeometry(b.x1 - b.x0, ROOM.height),
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
     );
-    wall.position.set((b.x0 + b.x1) / 2, ROOM.height / 2, b.z1 - 0.05);
+    // Стены строятся ВНУТРЬ комнаты (см. colliders.ts), поэтому дальняя стена
+    // занимает z от z1 - 0.2 до z1, а её обращённая к игроку грань — на z1 - 0.2.
+    // Плоскость на z1 - 0.05 оказалась бы ВНУТРИ этого непрозрачного бокса и не
+    // рисовалась бы вовсе: торец «светился» бы только за счёт пересвета серой
+    // стены лампой, то есть случайно.
+    wall.position.set((b.x0 + b.x1) / 2, ROOM.height / 2, b.z1 - ROOM.wallThickness - 0.05);
     wall.rotation.y = Math.PI;
     group.add(wall);
 
@@ -2955,8 +3313,10 @@ export function buildExitGlow(level: Level): THREE.Group {
 И в `<style>`:
 
 ```css
+      /* Ниже инвентаря (z-index 10), но выше HUD: засветка — эффект мира,
+         а инвентарь поверх неё остаётся читаемым. Экран победы выше всех. */
       #flash { position: fixed; inset: 0; background: #ffffff; opacity: 0;
-               pointer-events: none; z-index: 20; }
+               pointer-events: none; z-index: 5; }
       #win { position: fixed; inset: 0; display: flex; align-items: center;
              justify-content: center; z-index: 21; color: #1a1a1a;
              font: 600 32px/1.4 system-ui, sans-serif; }
@@ -3005,22 +3365,54 @@ world.on((event) => {
   }
 ```
 
-- [ ] **Step 5: Проверить глазами**
+- [ ] **Step 5: Убрать последнюю копию `onVerticalWall` из `src/render/walls.ts`**
+
+Задача 10 вынесла эту формулу в `doorOnVerticalWall`, но копию в `walls.ts` тогда
+не заметили ни ревью, ни план. Это тот же риск: перемычка над проёмом встала бы не
+на ту стену, если вычисления разойдутся.
+
+Заменить импорт:
+
+```ts
+import { doorOnVerticalWall, roomBounds } from '../core/validate';
+```
+
+И в цикле по дверям убрать локальное вычисление, заменив на вызов:
+
+```ts
+    const room = level.rooms.find((r) => r.id === door.between[0]);
+    if (!room) continue;
+    const b = roomBounds(room);
+
+    if (doorOnVerticalWall(door, room)) {
+```
+
+Переменная `b` в этом цикле остаётся: она больше не нужна для проверки стены,
+но `roomBounds` здесь всё ещё зовётся ради неё — если после правки `b` окажется
+неиспользованной, убери и её, и `roomBounds` из импорта, иначе `noUnusedLocals`
+уронит сборку.
+
+Геометрия обязана остаться прежней. Проверь это численно: число боксов и их
+координаты из `buildWalls(level_01)` до и после правки должны совпасть.
+
+- [ ] **Step 6: Проверить глазами**
 
 Run: `npm run dev`
 
 Проверить по списку:
 1. Над дверью `d_exit` в комнате `office` видна светящаяся зелёная табличка EXIT, заметная от входа в комнату.
-2. Табличка подсвечивает стену вокруг себя.
+2. Табличка подсвечивает стену вокруг себя мягким ореолом. Если вместо ореола
+   видно плоское белое пятно без градиента — лампа снова слишком близко к стене,
+   это та же ошибка, что была с потолком в задаче 8.
 3. За дверью EXIT — длинный коридор, в дальнем конце белое пятно света.
 4. По мере приближения к концу коридора экран плавно заливается белым.
 5. При входе в триггер экран становится полностью белым и появляется «Ты выбрался.», курсор освобождается.
 6. Пройти игру целиком от точки появления: ключ, замок, дверь, EXIT, победа.
 
-- [ ] **Step 6: Коммит**
+- [ ] **Step 7: Коммит**
 
 ```bash
-git add index.html src/render/sign.ts src/render/scene.ts src/main.ts
+git add index.html src/render/sign.ts src/render/scene.ts src/render/walls.ts src/main.ts
 git commit -m "Add EXIT sign, final corridor glow and win screen"
 ```
 
@@ -3035,6 +3427,8 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
 - Modify: `index.html` — экранные кнопки, стик, оверлей ориентации, ссылка на манифест
 - Create: `src/input/index.ts` — выбор активной схемы
 - Modify: `src/main.ts` — подключить выбор схемы
+- Modify: `src/core/movement.ts` — сделать скорость аналоговой
+- Test: `src/core/movement.test.ts`
 
 **Interfaces:**
 - Consumes: `InputSource`, `InputState` из Task 9
@@ -3049,9 +3443,9 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
 ```html
     <div id="touch" hidden>
       <div id="stick"><div id="stick-knob"></div></div>
-      <button id="btn-use" type="button">Взять</button>
-      <button id="btn-bag" type="button">Рюкзак</button>
+      <button id="btn-use" class="touch-btn" type="button">Действие</button>
     </div>
+    <button id="btn-bag" class="touch-btn" type="button" hidden>Рюкзак</button>
     <div id="rotate" hidden><p>Поверни телефон горизонтально</p></div>
 ```
 
@@ -3060,25 +3454,44 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
 ```css
       #touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
       #touch[hidden] { display: none; }
+      /* Стик виден и в покое. С opacity: 0 на экране не остаётся НИЧЕГО, что
+         подсказало бы игроку, где управление движением, — первый же живой
+         тестировщик не смог сдвинуться с места и спросил, как ходить.
+         В покое стик лежит в левом нижнем углу, при касании прыгает под палец
+         (работают инлайновые left/top, а bottom снимается классом active). */
       #stick { position: absolute; width: 120px; height: 120px; border-radius: 50%;
-               border: 2px solid rgba(255,255,255,0.3); opacity: 0; }
-      #stick.active { opacity: 1; }
+               border: 2px solid rgba(255,255,255,0.3); opacity: 0.4;
+               left: calc(28px + env(safe-area-inset-left)); top: auto;
+               bottom: calc(28px + env(safe-area-inset-bottom));
+               transition: opacity 0.12s; }
+      #stick.active { opacity: 1; bottom: auto; }
       #stick-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px;
                     margin: -26px 0 0 -26px; border-radius: 50%;
                     background: rgba(255,255,255,0.45); }
-      #touch button { position: absolute; pointer-events: auto; border: none;
-                      border-radius: 12px; background: rgba(255,255,255,0.18);
-                      color: #fff; font: 600 16px system-ui, sans-serif;
-                      min-width: 96px; min-height: 64px; }
-      #touch button:disabled { opacity: 0.35; }
+      /* Кнопки позиционируются от вьюпорта, поэтому им безразлично, лежат они
+         внутри #touch или рядом с ним. Для «Рюкзака» это решающее обстоятельство. */
+      .touch-btn { position: fixed; pointer-events: auto; border: none;
+                   border-radius: 12px; background: rgba(255,255,255,0.18);
+                   color: #fff; font: 600 16px system-ui, sans-serif;
+                   min-width: 96px; min-height: 64px; }
+      .touch-btn[hidden] { display: none; }
+      .touch-btn:disabled { opacity: 0.35; }
       #btn-use { right: calc(20px + env(safe-area-inset-right));
                  bottom: calc(28px + env(safe-area-inset-bottom)); }
+      /* Лежит СНАРУЖИ #touch и выше инвентаря (10). Внутри #touch это не работает:
+         `position: fixed` создаёт контекст наложения ВСЕГДА, независимо от z-index,
+         поэтому z-index потомка не может перебить соседний #inventory. Проверено
+         замером elementFromPoint на отдельном стенде. А выйти из инвентаря на
+         телефоне больше нечем: подсказка «I или Tab» пальцем не нажимается. */
       #btn-bag { right: calc(20px + env(safe-area-inset-right));
-                 top: calc(20px + env(safe-area-inset-top)); min-height: 48px; }
-      #rotate { position: fixed; inset: 0; display: flex; align-items: center;
+                 top: calc(20px + env(safe-area-inset-top)); min-height: 48px;
+                 z-index: 11; }
+      /* По умолчанию СКРЫТ. Показывается только медиазапросом ниже. Если написать
+         здесь display: flex, оверлей закроет игру и в ландшафте тоже — снять его
+         будет нечем, потому что JS только убирает атрибут hidden. */
+      #rotate { position: fixed; inset: 0; display: none; align-items: center;
                 justify-content: center; background: #0d0d10; color: #f2f2f2;
                 font: 20px system-ui, sans-serif; text-align: center; z-index: 30; }
-      #rotate[hidden] { display: none; }
       @media (orientation: portrait) and (pointer: coarse) {
         #rotate:not([hidden]) { display: flex; }
       }
@@ -3108,6 +3521,49 @@ git commit -m "Add EXIT sign, final corridor glow and win screen"
     <link rel="manifest" href="manifest.webmanifest" />
 ```
 
+И там же добавить современный аналог рядом со старым мета-тегом — не вместо него,
+старый всё ещё нужен Safari:
+
+```html
+    <meta name="mobile-web-app-capable" content="yes" />
+```
+
+Браузер уже пишет в консоль, что `apple-mobile-web-app-capable` устарел; это
+замечание висит запаркованным с задачи 8 и закрывается здесь.
+
+- [ ] **Step 1c: Сделать скорость аналоговой в `src/core/movement.ts`**
+
+Клавиатура даёт `move` длиной 1 или √2, поэтому `moveDelta` делит на длину и всегда
+выдаёт полную скорость. Стик даёт любую длину от 0 до 1 — и при делении на длину
+даже касание с отклонением в пиксель разогнало бы игрока до 3 м/с. Стик стал бы
+переключателем вместо стика.
+
+Заменить строку вычисления шага:
+
+```ts
+  // Делим на длину только когда она БОЛЬШЕ единицы: диагональ WASD остаётся
+  // нормированной, а неполное отклонение стика даёт пропорционально меньший шаг.
+  const step = (speed * dt) / Math.max(length, 1);
+```
+
+- [ ] **Step 1d: Дописать тесты в `src/core/movement.test.ts` и прогнать**
+
+```ts
+  it('половинное отклонение стика даёт половину скорости', () => {
+    const half = moveDelta({ x: 0, y: -0.5 }, 0, 3, 0.1);
+    expect(Math.hypot(half.x, half.z)).toBeCloseTo(0.15);
+  });
+
+  it('полное отклонение стика по диагонали не быстрее полной скорости', () => {
+    const full = moveDelta({ x: Math.SQRT1_2, y: -Math.SQRT1_2 }, 0.3, 3, 0.1);
+    expect(Math.hypot(full.x, full.z)).toBeCloseTo(0.3);
+  });
+```
+
+Run: `npm test src/core/movement.test.ts`
+Expected: 10 passed. Восемь прежних тестов обязаны остаться зелёными — они
+используют длины 1 и √2, на которых поведение не меняется.
+
 - [ ] **Step 2: Создать `src/input/touch.ts`**
 
 ```ts
@@ -3132,6 +3588,8 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
     throw new Error('Разметка тач-управления не найдена.');
   }
   panel.hidden = false;
+  // Кнопка рюкзака живёт вне #touch, поэтому показывается отдельно.
+  bagButton.hidden = false;
 
   let stickPointer: number | null = null;
   let stickOrigin = { x: 0, y: 0 };
@@ -3175,16 +3633,21 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
     }
   });
 
-  function release(event: PointerEvent): void {
+  // Стрелка в const, а не объявление функции: TypeScript сбрасывает сужение типа
+  // на поднимаемом объявлении, и `stick`/`knob` снова стали бы возможно-null.
+  const release = (event: PointerEvent): void => {
     if (event.pointerId === stickPointer) {
       stickPointer = null;
       state.move.x = 0;
       state.move.y = 0;
       knob.style.transform = '';
       stick.classList.remove('active');
+      // Снимаем инлайновую позицию — стик возвращается в угол, к правилам CSS.
+      stick.style.left = '';
+      stick.style.top = '';
     }
     if (event.pointerId === lookPointer) lookPointer = null;
-  }
+  };
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
 
@@ -3203,10 +3666,12 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
   };
 }
 
-/** Подсвечивает кнопку «Взять», когда прицел на цели. */
+/** Подсвечивает кнопку действия, когда прицел на цели. Зовётся каждый кадр,
+ *  поэтому элемент ищется один раз, а не при каждом вызове. */
+let useButtonEl: HTMLButtonElement | null = null;
 export function setUseButtonEnabled(enabled: boolean): void {
-  const button = document.querySelector<HTMLButtonElement>('#btn-use');
-  if (button) button.disabled = !enabled;
+  useButtonEl ??= document.querySelector<HTMLButtonElement>('#btn-use');
+  if (useButtonEl) useButtonEl.disabled = !enabled;
 }
 ```
 
@@ -3262,6 +3727,34 @@ import { setUseButtonEnabled } from './input/touch';
 
 Строка `const state = input.state;` внутри цикла должна остаться на месте: `state` читается через геттер, поэтому переключение схемы подхватится со следующего кадра.
 
+- [ ] **Step 4b: Закрыть два следствия появления тача в старых файлах**
+
+Тач-схема живёт рядом с десктопной, а не вместо неё, и это ломает две вещи,
+написанные раньше.
+
+В `src/input/desktop.ts` защитить вызов захвата курсора:
+
+```ts
+    if (locked) return;
+    // На iPhone Safari Pointer Lock не существует вовсе, и метод там undefined.
+    // Десктопный источник остаётся живым после переключения на тач, а тап
+    // синтезирует click — без этой проверки каждое касание экрана бросало бы
+    // TypeError. Синхронный бросок, catch ниже его не поймал бы.
+    if (typeof canvas.requestPointerLock !== 'function') return;
+    canvas.requestPointerLock().catch(() => {});
+```
+
+В `src/main.ts` в обработчике победы убрать экранное управление:
+
+```ts
+    document.querySelector('#touch')?.setAttribute('hidden', '');
+    document.querySelector('#btn-bag')?.setAttribute('hidden', '');
+```
+
+Иначе на белом экране победы останется торчать одна кнопка «Рюкзак»: панель
+управления лежит ниже засветки (z-index 5 против 5, но засветка позже в DOM),
+а кнопка рюкзака выше неё (11).
+
 - [ ] **Step 5: Проверить на реальном телефоне**
 
 Run: `npm run dev -- --host`
@@ -3274,7 +3767,10 @@ Run: `npm run dev -- --host`
 5. Страница не скроллится и не зумится ни при каких жестах.
 6. Кнопка «Взять» неактивна, пока прицел ни на чём, и загорается при наведении.
 7. Кнопка «Рюкзак» открывает инвентарь, строки нажимаются пальцем без промахов.
-8. В портретной ориентации показывается «Поверни телефон горизонтально».
+8. В портретной ориентации показывается «Поверни телефон горизонтально», а в
+   ландшафтной этого оверлея НЕТ. Если он виден в обоих — игра заблокирована.
+8a. Открыть рюкзак и закрыть его той же кнопкой. Это единственный способ выйти
+   из инвентаря на телефоне: подсказка «I или Tab» пальцем не нажимается.
 9. Кнопки не заезжают под чёлку и под индикатор home.
 9a. Добавить страницу на главный экран (Поделиться → На экран «Домой»), запустить с иконки — адресной строки быть не должно.
 10. Пройти игру целиком с телефона.
@@ -3282,7 +3778,8 @@ Run: `npm run dev -- --host`
 - [ ] **Step 6: Коммит**
 
 ```bash
-git add index.html public/manifest.webmanifest src/input src/main.ts
+git add index.html public/manifest.webmanifest src/input src/core/movement.ts \
+  src/core/movement.test.ts src/main.ts
 git commit -m "Add touch controls, PWA manifest and mobile UI"
 ```
 
@@ -3295,7 +3792,8 @@ git commit -m "Add touch controls, PWA manifest and mobile UI"
 **Files:**
 - Create: `src/ui/fatal.ts`
 - Modify: `index.html` — контейнер экрана ошибки
-- Modify: `src/main.ts` — обернуть загрузку и цикл
+- Modify: `src/main.ts` — обернуть загрузку и цикл, поставить глобальные ловушки
+- Modify: `src/input/desktop.ts` — перестать глушить отказ захвата молча
 
 **Interfaces:**
 - Consumes: результат `loadLevel()` из Task 8
@@ -3378,7 +3876,11 @@ if (!loaded.ok) {
 const level = loaded.level;
 ```
 
-Обернуть тело игрового цикла. Найти `renderer.setAnimationLoop((now) => {` и превратить в:
+Обернуть тело игрового цикла. **Тело обязано остаться посимвольно прежним**, меняется
+только отступ. После правки сверь `git diff -w` — он должен показать только добавленные
+строки try/catch, и ни одной изменённой строки внутри тела.
+
+Найти `renderer.setAnimationLoop((now) => {` и превратить в:
 
 ```ts
 renderer.setAnimationLoop((now) => {
@@ -3395,9 +3897,67 @@ renderer.setAnimationLoop((now) => {
 });
 ```
 
+- [ ] **Step 3b: Поставить глобальные ловушки в `src/main.ts`**
+
+try/catch вокруг цикла закрывает только цикл. Ошибка в обработчике DOM-события идёт
+мимо: клик по строке инвентаря зовёт `setHeld`, а тот через подписки дёргает
+перерисовку списка и предмет в руке — всё это вне кадра. Туда же уходит исключение
+из самого `new THREE.WebGLRenderer`, если оно случится вопреки проверке.
+
+Добавить сразу после импортов, ДО всего остального кода:
+
+```ts
+/**
+ * Останавливает игровой цикл. Заполняется после создания рендерера: ловушки ниже
+ * нужны раньше, чем он существует. Без этого экран ошибки от сбоя в обработчике
+ * DOM-события накрывал бы картинку, а цикл продолжал бы считать и рисовать позади.
+ */
+let stopLoop: () => void = () => {};
+
+window.addEventListener('error', (event) => {
+  stopLoop();
+  showFatal('Непойманная ошибка', [
+    event.message,
+    event.error instanceof Error && event.error.stack ? event.error.stack : '',
+  ]);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  stopLoop();
+  showFatal('Непойманный отказ промиса', [String(event.reason)]);
+});
+```
+
+А сразу после строки `renderer.toneMapping = ...` присвоить настоящий останов:
+
+```ts
+stopLoop = () => renderer.setAnimationLoop(null);
+```
+
+Повторный вызов `showFatal` безвреден: у неё стоит флаг `shown`. Поэтому намеренные
+`throw` после показа экрана валидации не перерисуют его поверх.
+
+- [ ] **Step 3c: Перестать глушить отказ захвата курсора в `src/input/desktop.ts`**
+
+Замечание запарковано с задачи 9: `.catch(() => {})` глушит ЛЮБОЙ отказ, а не только
+штатный кулдаун Chrome. Во фрейме с запретом по permissions-policy игрок кликал бы в
+пустоту без единого следа в консоли. Задача про обработку ошибок — место это закрыть.
+
+```ts
+    canvas.requestPointerLock().catch((error: unknown) => {
+      // Отказ бывает штатным: Chrome примерно 1.25 с после Escape захват не отдаёт.
+      // Но молчать обо всех подряд нельзя — запрет из permissions-policy выглядел бы
+      // как неработающий клик без объяснений.
+      console.warn('Захват курсора не удался:', error);
+    });
+```
+
+Экран ошибки здесь НЕ показывается намеренно: это не фатальный случай, игра остаётся
+работоспособной, а на телефоне захвата нет вовсе и он не нужен.
+
 - [ ] **Step 4: Проверить все три экрана**
 
-1. **Ошибка валидации.** Временно испортить `src/levels/level_01.json`: заменить `"between": ["hall", "corridor_a"]` на `"between": ["hall", "nope"]`. Обновить страницу — должен появиться экран со списком ошибок, включая упоминание `nope`. Вернуть файл как было.
+1. **Ошибка валидации.** Временно испортить `src/levels/level_01.json`: заменить `"between": ["hall", "corridor_a"]` на `"between": ["hall", "nope"]`. Обновить страницу — должен появиться экран со списком ошибок, включая упоминание `nope`. Затем вернуть файл: `git checkout src/levels/level_01.json`, и **обязательно** убедиться через `git status`, что дерево чистое. Испорченный уровень, уехавший в коммит, ломает игру целиком.
 2. **Ошибка в цикле.** Временно добавить в тело цикла `if (now > 2000) throw new Error('проверка');`. Через две секунды должен появиться экран ошибки, а браузер не должен виснуть. Убрать строку.
 3. **WebGL.** Проверяется чтением кода: убедиться, что `hasWebGl()` вызывается до создания рендерера.
 
@@ -3409,7 +3969,7 @@ Expected: PASS, все тесты зелёные.
 - [ ] **Step 6: Коммит**
 
 ```bash
-git add index.html src/ui/fatal.ts src/main.ts
+git add index.html src/ui/fatal.ts src/main.ts src/input/desktop.ts
 git commit -m "Add fatal error screens for validation, WebGL and loop failures"
 ```
 
@@ -3444,7 +4004,10 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # Именно false, а не true. Прерванный на середине деплой Pages оставляет
+  # окружение в неопределённом состоянии; официальный стартовый workflow
+  # GitHub тоже ставит здесь false.
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -3475,6 +4038,9 @@ jobs:
 ```
 
 - [ ] **Step 2: Заполнить `README.md`**
+
+Осторожно: блок ниже сам содержит тройные обратные кавычки внутри. В файл идёт
+СОДЕРЖИМОЕ, а не внешняя ограда. Проще всего записать файл через heredoc.
 
 ```markdown
 # Bandy
@@ -3510,17 +4076,23 @@ npm run build            # сборка в dist/
 
 **Settings → Pages → Build and deployment → Source → GitHub Actions**
 
-Без него workflow упадёт на шаге `configure-pages`.
+Без него workflow упадёт на шаге `configure-pages`. Сделать это надо ДО первого
+пуша в `main`, иначе первый же прогон покраснеет.
 
-- [ ] **Step 4: Закоммитить и запушить**
+- [ ] **Step 4: Закоммитить на рабочей ветке**
+
+Работа идёт в `vertical-slice`, а в `main` лежат пока только документы. Пушить
+`main` на этом шаге НЕЛЬЗЯ: кода там нет, и Pages опубликует пустую страницу.
 
 ```bash
 git add .github/workflows/deploy.yml README.md
 git commit -m "Add GitHub Pages deployment workflow"
-git push -u origin main
 ```
 
-- [ ] **Step 5: Проверить публикацию**
+Слияние в `main` и первый настоящий деплой происходят ПОСЛЕ финального ревью всей
+ветки, при её завершении. Пуш выполняет владелец репозитория.
+
+- [ ] **Step 5: Проверить публикацию (после слияния в `main`)**
 
 1. Открыть вкладку Actions в репозитории, дождаться зелёного прогона.
 2. Открыть `https://navoznov.github.io/bandy/` — игра должна запуститься.

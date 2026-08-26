@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <title>Bandy</title>
+    <style>
+      html, body { margin: 0; padding: 0; height: 100dvh; overflow: hidden; background: #000; }
+      #canvas { display: block; width: 100%; height: 100dvh; touch-action: none; }
+      #hud { position: fixed; inset: 0; pointer-events: none;
+             font: 16px/1.4 system-ui, sans-serif; color: #f2f2f2; }
+      #reticle { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px;
+                 margin: -3px 0 0 -3px; border-radius: 50%;
+                 background: rgba(255,255,255,0.75);
+                 transition: transform 0.1s, background 0.1s; }
+      #reticle.active { transform: scale(1.9); background: #ffd479; }
+      #prompt { position: absolute; left: 50%; top: calc(50% + 28px);
+                transform: translateX(-50%); padding: 6px 12px; border-radius: 6px;
+                background: rgba(0,0,0,0.55); white-space: nowrap; opacity: 0;
+                transition: opacity 0.12s; }
+      #prompt.visible { opacity: 1; }
+      #prompt.refusal { background: rgba(90,20,20,0.7); }
+      #inventory { position: fixed; inset: 0; display: flex; flex-direction: column;
+                   align-items: center; justify-content: center; gap: 10px;
+                   background: rgba(10,10,14,0.86); color: #f2f2f2;
+                   font: 18px/1.5 system-ui, sans-serif; z-index: 10; }
+      #inventory[hidden] { display: none; }
+      #inventory h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+      #inventory ul { list-style: none; margin: 0; padding: 0; width: min(420px, 84vw); }
+      #inventory li { padding: 14px 16px; margin-bottom: 8px; border-radius: 8px;
+                      background: rgba(255,255,255,0.09); cursor: pointer;
+                      min-height: 48px; box-sizing: border-box; }
+      #inventory li.held { background: rgba(255,212,121,0.22); outline: 2px solid #ffd479; }
+      #inventory .hint { opacity: 0.55; font-size: 14px; }
+      /* Ниже инвентаря (z-index 10), но выше HUD: засветка — эффект мира,
+         а инвентарь поверх неё остаётся читаемым. Экран победы выше всех. */
+      #flash { position: fixed; inset: 0; background: #ffffff; opacity: 0;
+               pointer-events: none; z-index: 5; }
+      #win { position: fixed; inset: 0; display: flex; flex-direction: column;
+             align-items: center; justify-content: center; gap: 12px;
+             text-align: center; padding: 24px; box-sizing: border-box;
+             z-index: 21; color: #1a1a1a;
+             font: 600 32px/1.4 system-ui, sans-serif; }
+      #win[hidden] { display: none; }
+      #win p { margin: 0; }
+      #win .again { font: 16px/1.4 system-ui, sans-serif; opacity: 0.65; }
+      #touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+      #touch[hidden] { display: none; }
+      /* Стик виден и в покое, иначе игрок не догадается, что левая половина
+         экрана вообще управляет движением. В покое он лежит в левом нижнем углу,
+         при касании прыгает под палец (тогда работают инлайновые left/top,
+         а bottom снимается). */
+      #stick { position: absolute; width: 120px; height: 120px; border-radius: 50%;
+               border: 2px solid rgba(255,255,255,0.3); opacity: 0.4;
+               left: calc(28px + env(safe-area-inset-left)); top: auto;
+               bottom: calc(28px + env(safe-area-inset-bottom));
+               transition: opacity 0.12s; }
+      #stick.active { opacity: 1; bottom: auto; }
+      #stick-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px;
+                    margin: -26px 0 0 -26px; border-radius: 50%;
+                    background: rgba(255,255,255,0.45); }
+      /* Кнопки позиционируются от вьюпорта, поэтому им безразлично, лежат они
+         внутри #touch или рядом с ним. Для «Рюкзака» это решающее обстоятельство. */
+      .touch-btn { position: fixed; pointer-events: auto; border: none;
+                   border-radius: 12px; background: rgba(255,255,255,0.18);
+                   color: #fff; font: 600 16px system-ui, sans-serif;
+                   min-width: 96px; min-height: 64px; }
+      .touch-btn[hidden] { display: none; }
+      .touch-btn:disabled { opacity: 0.35; }
+      #btn-use { right: calc(20px + env(safe-area-inset-right));
+                 bottom: calc(28px + env(safe-area-inset-bottom)); }
+      /* Лежит СНАРУЖИ #touch и выше инвентаря (10). Внутри #touch это не работает:
+         `position: fixed` создаёт контекст наложения ВСЕГДА, независимо от z-index,
+         поэтому z-index потомка не может перебить соседний #inventory. Проверено
+         замером elementFromPoint на отдельном стенде. А выйти из инвентаря на
+         телефоне больше нечем: подсказка «I или Tab» пальцем не нажимается. */
+      #btn-bag { right: calc(20px + env(safe-area-inset-right));
+                 top: calc(20px + env(safe-area-inset-top)); min-height: 48px;
+                 z-index: 11; }
+      /* По умолчанию СКРЫТ. Показывается только медиазапросом ниже. Если написать
+         здесь display: flex, оверлей закроет игру и в ландшафте тоже — снять его
+         будет нечем, потому что JS только убирает атрибут hidden. */
+      #rotate { position: fixed; inset: 0; display: none; align-items: center;
+                justify-content: center; background: #0d0d10; color: #f2f2f2;
+                font: 20px system-ui, sans-serif; text-align: center; z-index: 30; }
+      @media (orientation: portrait) and (pointer: coarse) {
+        #rotate:not([hidden]) { display: flex; }
+      }
+      /* Стартовый экран, он же пауза. Ниже инвентаря (10), победы (21), «поверни
+         телефон» (30) и экрана ошибки (40), но выше засветки и экранного
+         управления (оба 5) — иначе затемнение легло бы под стик и под подсказку
+         про ландшафт. На белом финале оверлей проступил бы поверх засветки
+         именно из-за этого, и не даёт ему только `start.dismiss()` в main.ts.
+         Клики сквозь него проходят насквозь: захват курсора запрашивает уже
+         существующий обработчик на канвасе, второй такой же здесь не нужен. */
+      #start { position: fixed; inset: 0; z-index: 8; pointer-events: none;
+               display: flex; flex-direction: column; align-items: center;
+               justify-content: center; gap: 14px; text-align: center;
+               padding: 24px; box-sizing: border-box;
+               background: rgba(10,10,14,0.72); color: #f2f2f2;
+               font: 16px/1.5 system-ui, sans-serif; }
+      #start[hidden] { display: none; }
+      #start h1 { margin: 0; font: 600 40px/1.1 system-ui, sans-serif;
+                  letter-spacing: 0.16em; }
+      #start-action { margin: 0; font-size: 20px; color: #ffd479; }
+      #start ul { list-style: none; margin: 0; padding: 0; opacity: 0.8; }
+      /* Клавиши или экранные кнопки — тот же вопрос, что `matchMedia('(pointer:
+         coarse)')` в JS, только заданный CSS. Критерий один, движка два. */
+      .for-touch { display: none; }
+      @media (pointer: coarse) {
+        .for-desktop { display: none; }
+        .for-touch { display: block; }
+      }
+      #fatal { position: fixed; inset: 0; overflow: auto; z-index: 40;
+               background: #1a1013; color: #ffd7d7; padding: 32px;
+               font: 15px/1.6 ui-monospace, monospace; }
+      #fatal[hidden] { display: none; }
+      #fatal h1 { margin: 0 0 16px; font-size: 20px; color: #ff9a9a; }
+      #fatal pre { margin: 0; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <div id="hud">
+      <div id="reticle"></div>
+      <div id="prompt"></div>
+    </div>
+    <div id="touch" hidden>
+      <div id="stick"><div id="stick-knob"></div></div>
+      <button id="btn-use" class="touch-btn" type="button">Действие</button>
+    </div>
+    <button id="btn-bag" class="touch-btn" type="button" hidden>Рюкзак</button>
+    <div id="rotate" hidden><p>Поверни телефон горизонтально</p></div>
+    <div id="start">
+      <h1 id="start-title">BANDY</h1>
+      <p id="start-action">Нажми, чтобы начать</p>
+      <ul class="for-desktop">
+        <li>WASD — идти</li>
+        <li>Мышь — осмотреться</li>
+        <li>E — действие</li>
+        <li>I или Tab — рюкзак</li>
+        <li>Escape — пауза</li>
+      </ul>
+      <ul class="for-touch">
+        <li>Стик слева — идти</li>
+        <li>Свайп справа — осмотреться</li>
+        <li>Кнопка «Действие» — действие</li>
+        <li>Кнопка «Рюкзак» — инвентарь</li>
+      </ul>
+    </div>
+    <div id="inventory" hidden>
+      <h2>Инвентарь</h2>
+      <ul id="inventory-list"></ul>
+      <p id="inventory-empty">Пусто.</p>
+      <p class="hint">Нажми на предмет, чтобы взять его в руку</p>
+      <p class="hint for-desktop">I или Tab — закрыть</p>
+      <p class="hint for-touch">Кнопка «Рюкзак» — закрыть</p>
+    </div>
+    <div id="flash"></div>
+    <div id="win" hidden>
+      <p>Ты выбрался.</p>
+      <p class="again">Обнови страницу, чтобы пройти заново.</p>
+    </div>
+    <div id="fatal" hidden><h1 id="fatal-title"></h1><pre id="fatal-body"></pre></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
