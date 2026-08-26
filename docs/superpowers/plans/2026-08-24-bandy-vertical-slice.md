@@ -1,5 +1,10 @@
 # Bandy Vertical Slice Implementation Plan
 
+> **Выполнен целиком 26 августа 2026 и задеплоен:** https://navoznov.github.io/bandy/
+> Чекбоксы ниже так и остались непроставленными — ходом работ управлял журнал в
+> `.superpowers/sdd/2026-08-24-bandy-vertical-slice/progress.md`, а не они. Актуальное
+> состояние проекта — в `CLAUDE.md`, отложенные проблемы — в `known-issues.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Собрать играбельный от старта до победы вертикальный срез 3D-игры от первого лица: игрок ходит по четырём помещениям, подбирает ключ, открывает им замок на двери, находит дверь EXIT и выходит по коридору к белому свету.
