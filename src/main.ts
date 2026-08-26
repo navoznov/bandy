@@ -5,11 +5,12 @@ import { resolveMove } from './core/collision';
 import { moveDelta } from './core/movement';
 import { World } from './core/world';
 import { loadLevel } from './levels';
-import { createInput } from './input';
+import { createInput, isCoarsePointer } from './input';
 import { buildScene } from './render/scene';
 import { createHand } from './render/hand';
 import { createHud } from './ui/hud';
 import { createInventoryUi } from './ui/inventory';
+import { createStartOverlay } from './ui/start';
 import { hasWebGl, showFatal } from './ui/fatal';
 
 /**
@@ -68,6 +69,7 @@ const { scene, interactables, doors } = buildScene(level, world);
 const hud = createHud();
 const hand = createHand();
 const inventoryUi = createInventoryUi(world);
+const start = createStartOverlay(isCoarsePointer());
 
 const flashEl = document.querySelector<HTMLElement>('#flash');
 const winEl = document.querySelector<HTMLElement>('#win');
@@ -79,6 +81,8 @@ world.on((event) => {
   if (event.kind === 'won') {
     if (document.pointerLockElement) document.exitPointerLock();
     winEl.hidden = false;
+    // Отпущенный захват иначе тут же вернул бы стартовый экран — поверх засветки.
+    start.dismiss();
     // Экранное управление лежит ниже засветки, но кнопка рюкзака — выше неё,
     // и на белом экране победы торчала бы одна она. Игра кончилась, убираем всё.
     document.querySelector('#touch')?.setAttribute('hidden', '');
@@ -136,8 +140,11 @@ renderer.setAnimationLoop((now) => {
       if (inventoryUi.isOpen() && document.pointerLockElement) document.exitPointerLock();
     }
     const paused = inventoryUi.isOpen();
+    start.setInventoryOpen(paused);
 
-    if (input.isLocked() && !paused) {
+    // На десктопе видимость оверлея и так означает отсутствие захвата, но на
+    // тач-схеме `isLocked()` всегда true — там игрока держит именно эта проверка.
+    if (input.isLocked() && !paused && !start.isVisible()) {
       yaw -= state.look.dx * LOOK.sensitivity;
       pitch -= state.look.dy * LOOK.sensitivity;
       pitch = Math.max(-LOOK.maxPitch, Math.min(LOOK.maxPitch, pitch));
@@ -179,7 +186,7 @@ renderer.setAnimationLoop((now) => {
         hud.setPrompt(null);
       } else {
         const outcome = world.describe(targetId);
-        if (outcome.ok) hud.setPrompt(outcome.prompt);
+        if (outcome.ok) hud.setPrompt(outcome.prompt, input.scheme === 'desktop' ? 'E' : null);
         else hud.setRefusal(outcome.refusal);
 
         if (state.interact && input.isLocked()) world.interact(targetId);

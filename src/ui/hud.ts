@@ -1,6 +1,11 @@
 export interface Hud {
-  /** Подсказка о доступном действии. `null` прячет строку. */
-  setPrompt(text: string | null): void;
+  /**
+   * Подсказка о доступном действии. `null` прячет строку.
+   * `key` — имя клавиши, которой действие делается: без него игрок читает
+   * «Подобрать: Латунный ключ» и не знает, чем подбирать. На тач-схеме `null` —
+   * там вместо клавиши видна кнопка «Действие».
+   */
+  setPrompt(text: string | null, key?: string | null): void;
   /** Причина отказа: та же строка, но другим фоном. */
   setRefusal(text: string | null): void;
   /** Короткое сообщение поверх, например текст эффекта say. */
@@ -14,8 +19,8 @@ export function createHud(): Hud {
 
   let flashUntil = 0;
 
-  function writePrompt(text: string | null, refusal: boolean): void {
-    prompt!.textContent = text ?? '';
+  function writePrompt(text: string | null, refusal: boolean, key?: string | null): void {
+    prompt!.textContent = text === null ? '' : key ? `[${key}] ${text}` : text;
     prompt!.classList.toggle('visible', text !== null);
     prompt!.classList.toggle('refusal', refusal);
   }
@@ -25,14 +30,15 @@ export function createHud(): Hud {
    * иначе любое сообщение `say` красило бы прицел активным жёлтым посреди пустой
    * комнаты и на две секунды прятало бы настоящий отказ.
    */
-  function aim(text: string | null, refusal: boolean): void {
+  function aim(text: string | null, refusal: boolean, key?: string | null): void {
     reticle!.classList.toggle('active', text !== null && !refusal);
     if (performance.now() < flashUntil) return;
-    writePrompt(text, refusal);
+    writePrompt(text, refusal, key);
   }
 
   return {
-    setPrompt: (text) => aim(text, false),
+    setPrompt: (text, key) => aim(text, false, key),
+    // Отказ клавишей не снимается — предлагать её было бы враньём.
     setRefusal: (text) => aim(text, true),
     flash(text) {
       writePrompt(text, false);
