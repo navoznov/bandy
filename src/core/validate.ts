@@ -24,7 +24,9 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
-const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+// Короткая запись #rgb — законный CSS, и three.js её принимает. Валидатор,
+// отвергающий верные данные, хуже мягкого: он блокирует автора карты ни за что.
+const COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 /** Достаёт поле верхнего уровня как массив. Не массив/отсутствует — своя ошибка. */
 function asArray(lvl: Record<string, unknown>, key: string, errors: string[]): unknown[] {
@@ -156,7 +158,7 @@ function parseRooms(raw: unknown[], errors: string[]): RoomDef[] {
     }
 
     if (!isNonEmptyString(r['color']) || !COLOR_RE.test(r['color'])) {
-      errors.push(`Комната ${label}: поле "color" должно быть строкой вида "#rrggbb", получено ${JSON.stringify(r['color'])}.`);
+      errors.push(`Комната ${label}: поле "color" должно быть строкой вида "#rgb" или "#rrggbb", получено ${JSON.stringify(r['color'])}.`);
       valid = false;
     }
 
@@ -453,6 +455,12 @@ export function validateLevel(
   const items = parseItems(asArray(lvl, 'items', errors), errors);
   const triggers = parseTriggers(asArray(lvl, 'triggers', errors), errors);
   const rawRules = asArray(lvl, 'interactions', errors) as Array<Record<string, unknown>>;
+
+  // Дальше идут проверки смысла, а они опираются на разобранные сущности. Битая
+  // форма означает, что часть сущностей отброшена, и каждая ссылка на них дала бы
+  // «несуществующая комната» — три ложные ошибки поверх одной настоящей, и автор
+  // карты пошёл бы чинить не то. Сначала форма, смысл — следующим запуском.
+  if (errors.length > 0) return { ok: false, errors };
 
   if (rooms.length === 0) errors.push('В уровне нет ни одной комнаты.');
 

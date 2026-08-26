@@ -217,6 +217,19 @@ describe('validateLevel: структурная проверка формы JSON
     expect(errors.join(' ')).toContain('"color"');
   });
 
+  it('битая форма не тянет за собой ложные ошибки про несуществующие комнаты', () => {
+    // Комната с битым полем отбрасывается разбором, и всё, что на неё ссылалось,
+    // без отсечки сообщало бы «несуществующая комната» — три лжи поверх правды.
+    const errors = errorsFor((l) => { l.rooms[0]!.color = 'не цвет'; });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('"color"');
+  });
+
+  it('принимает короткую запись цвета "#rgb"', () => {
+    const errors = errorsFor((l) => { l.rooms[0]!.color = '#888'; });
+    expect(errors).toEqual([]);
+  });
+
   it('ловит мусор в поле light', () => {
     const errors = errorsFor((l) => {
       (l.rooms[0]! as Record<string, unknown>).light = 'ярко';
