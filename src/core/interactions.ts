@@ -2,7 +2,14 @@ import type { DoorDef, Effect, ItemLocation, Level } from './types';
 
 export type Outcome =
   | { ok: true; prompt: string; effects: Effect[] }
-  | { ok: false; refusal: string };
+  /**
+   * `untried` — что показывать, пока игрок ни разу не нажал на эту цель (спека §6,
+   * уточнение от 26 августа 2026). Заводится только там, где скрытая причина
+   * создаёт интригу: увидеть «Заперто» с другого конца коридора значит получить
+   * загадку, не подойдя к ней. Само разрешение о попытках не знает — что игрок уже
+   * пробовал, помнит `World`, он же это поле и убирает.
+   */
+  | { ok: false; refusal: string; untried?: string };
 
 /** Ровно то, что разрешению нужно от мира. Позволяет обойтись без циклического импорта. */
 export interface WorldView {
@@ -72,7 +79,8 @@ export function resolveInteraction(view: WorldView, targetId: string): Outcome {
     case 'door': {
       const { door } = target;
       if (door.lock !== undefined && !view.isDestroyed(door.lock)) {
-        return { ok: false, refusal: 'Заперто. На двери висит замок.' };
+        // Запертая дверь никогда не открыта, поэтому текст до попытки всегда этот.
+        return { ok: false, refusal: 'Заперто. На двери висит замок.', untried: 'Открыть дверь' };
       }
       return {
         ok: true,
