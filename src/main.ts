@@ -4,7 +4,7 @@ import { activeColliders, buildColliders } from './core/colliders';
 import { resolveMove } from './core/collision';
 import { moveDelta } from './core/movement';
 import { World } from './core/world';
-import { loadLevel } from './levels';
+import { loadLevel, nextLevelId } from './levels';
 import { createInput, isCoarsePointer } from './input';
 import { buildScene } from './render/scene';
 import { createHand } from './render/hand';
@@ -44,7 +44,9 @@ if (!hasWebGl()) {
   throw new Error('WebGL недоступен');
 }
 
-const loaded = loadLevel();
+// Хеш разбирается здесь, а не в реестре: реестр обязан запускаться в тестах,
+// где нет ни `location`, ни `window`.
+const loaded = loadLevel(location.hash.slice(1));
 if (!loaded.ok) {
   showFatal('Уровень не прошёл валидацию', loaded.errors);
   throw new Error('Уровень не прошёл валидацию');
@@ -96,12 +98,29 @@ const flashEl = document.querySelector<HTMLElement>('#flash');
 const winEl = document.querySelector<HTMLElement>('#win');
 if (!flashEl || !winEl) throw new Error('Разметка финала не найдена.');
 
+const nextButton = document.querySelector<HTMLButtonElement>('#win-next');
+const againEl = document.querySelector<HTMLElement>('#win-again');
+const nextId = nextLevelId(level.id);
+if (nextButton && nextId !== null) {
+  nextButton.addEventListener('click', () => {
+    location.hash = nextId;
+    // Перезагрузка переиспользует весь проверенный путь загрузки целиком.
+    location.reload();
+  });
+}
+
 const winTrigger = level.triggers.find((t) => t.effect === 'win');
 
 world.on((event) => {
   if (event.kind === 'won') {
     if (document.pointerLockElement) document.exitPointerLock();
     winEl.hidden = false;
+    if (nextButton && nextId !== null) {
+      nextButton.hidden = false;
+      // «Обнови страницу, чтобы пройти заново» относится к последнему уровню.
+      // Рядом с кнопкой «Дальше» это два противоречащих совета.
+      if (againEl) againEl.hidden = true;
+    }
     // Отпущенный захват иначе тут же вернул бы стартовый экран — поверх засветки.
     start.dismiss();
     // Кадр, в котором это случилось, досчитывается до конца — засветка и экран
