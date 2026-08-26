@@ -99,6 +99,7 @@ describe('validateLevel', () => {
   it('разбирает сокращённую запись эффектов в размеченное объединение', () => {
     const lvl = baseLevel();
     (lvl.doors[0]! as Record<string, unknown>).lock = 'lock_x';
+    (lvl as Record<string, unknown>)['locks'] = { lock_x: 'Латунный замок' };
     lvl.interactions.push({
       use: 'key_brass',
       on: 'lock_x',
@@ -135,6 +136,55 @@ describe('doorOnVerticalWall', () => {
 });
 
 describe('validateLevel: достижимость (I2)', () => {
+  /**
+   * Спека §5: единственное собственное свойство замка — название, и оно обязано
+   * быть. Опечатка в идентификаторе тихо оставила бы игрока перед безымянным
+   * замком, о котором HUD не может сказать ничего.
+   */
+  it('ловит замок без названия', () => {
+    const errors = errorsFor((l) => {
+      (l.doors[0]! as Record<string, unknown>).lock = 'lock_ab';
+      l.interactions.push({
+        use: 'key_brass',
+        on: 'lock_ab',
+        effects: [{ destroy: 'lock_ab' }],
+      } as never);
+    });
+    const text = errors.join(' ');
+    expect(text).toContain('lock_ab');
+    expect(text).toContain('не назван');
+  });
+
+  it('ловит название, которое ни на одной двери не висит', () => {
+    const errors = errorsFor((l) => {
+      (l as Record<string, unknown>)['locks'] = { lock_ghost: 'Призрачный замок' };
+    });
+    const text = errors.join(' ');
+    expect(text).toContain('lock_ghost');
+    expect(text).toContain('ни на одной двери');
+  });
+
+  it('ловит название не-строкой', () => {
+    const errors = errorsFor((l) => {
+      (l.doors[0]! as Record<string, unknown>).lock = 'lock_ab';
+      (l as Record<string, unknown>)['locks'] = { lock_ab: 42 };
+    });
+    expect(errors.join(' ')).toContain('непустой строкой');
+  });
+
+  it('принимает уровень с названным замком', () => {
+    const errors = errorsFor((l) => {
+      (l.doors[0]! as Record<string, unknown>).lock = 'lock_ab';
+      (l as Record<string, unknown>)['locks'] = { lock_ab: 'Латунный замок' };
+      l.interactions.push({
+        use: 'key_brass',
+        on: 'lock_ab',
+        effects: [{ destroy: 'lock_ab' }],
+      } as never);
+    });
+    expect(errors).toEqual([]);
+  });
+
   it('ловит уровень, где ключ лежит за той самой дверью, которую он открывает', () => {
     const errors = errorsFor((l) => {
       (l.doors[0]! as Record<string, unknown>).lock = 'lock_ab';
@@ -159,6 +209,7 @@ describe('validateLevel: достижимость (I2)', () => {
   it('принимает уровень с ключом на стороне спавна и замком дальше по пути', () => {
     const lvl = baseLevel();
     (lvl.doors[0]! as Record<string, unknown>).lock = 'lock_ab';
+    (lvl as Record<string, unknown>)['locks'] = { lock_ab: 'Латунный замок' };
     lvl.interactions.push({
       use: 'key_brass',
       on: 'lock_ab',
@@ -177,6 +228,7 @@ describe('validateLevel: достижимость (I2)', () => {
     };
     const lvl = baseLevel();
     (lvl.doors[0]! as Record<string, unknown>).lock = 'lock_ab';
+    (lvl as Record<string, unknown>)['locks'] = { lock_ab: 'Латунный замок' };
     lvl.interactions.push(
       { use: 'key_brass', on: 'lock_ab', effects: [{ take: 'key_iron' }] } as never,
       { use: 'key_iron', on: 'lock_ab', effects: [{ destroy: 'lock_ab' }] } as never,

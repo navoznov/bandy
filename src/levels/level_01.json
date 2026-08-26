@@ -17,6 +17,10 @@
       "sign": "EXIT" }
   ],
 
+  "locks": {
+    "lock_front": "Латунный замок"
+  },
+
   "items": [
     { "def": "key_brass", "room": "hall", "at": [6.8, 0.02, 3.7] }
   ],

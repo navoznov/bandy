@@ -463,6 +463,28 @@ function isWinReachable(
     && isRuleTargetReachable(rule.on, reach, doors, items));
 }
 
+/**
+ * Блок `locks`: «идентификатор замка» → «название». Отсутствие блока — не ошибка
+ * формы: уровень без единой запертой двери его не имеет. Что каждый висящий замок
+ * назван, проверяется ниже, вместе с остальными проверками смысла.
+ */
+function parseLockNames(raw: unknown, errors: string[]): Record<string, string> {
+  if (raw === undefined) return {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    errors.push('Поле "locks" должно быть объектом вида «идентификатор: название».');
+    return {};
+  }
+  const names: Record<string, string> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!isNonEmptyString(value)) {
+      errors.push(`Замок "${id}": название должно быть непустой строкой.`);
+      continue;
+    }
+    names[id] = value;
+  }
+  return names;
+}
+
 export function validateLevel(
   raw: unknown,
   itemDefs: Record<string, ItemDef>,
@@ -479,6 +501,7 @@ export function validateLevel(
   const items = parseItems(asArray(lvl, 'items', errors), errors);
   const triggers = parseTriggers(asArray(lvl, 'triggers', errors), errors);
   const rawRules = asArray(lvl, 'interactions', errors) as Array<Record<string, unknown>>;
+  const lockNames = parseLockNames(lvl['locks'], errors);
 
   // Дальше идут проверки смысла, а они опираются на разобранные сущности. Битая
   // форма означает, что часть сущностей отброшена, и каждая ссылка на них дала бы
@@ -504,7 +527,7 @@ export function validateLevel(
 
   checkUniqueIds(rooms, doors, triggers, itemDefs, errors);
 
-  const locks = new Set<string>();
+  const lockIds = new Set<string>();
   for (const door of doors) {
     const [aId, bId] = door.between;
     const a = byId.get(aId);
@@ -534,7 +557,7 @@ export function validateLevel(
         );
       }
     }
-    if (door.lock) locks.add(door.lock);
+    if (door.lock) lockIds.add(door.lock);
   }
 
   const seenDefs = new Set<string>();
@@ -588,9 +611,17 @@ export function validateLevel(
     interactions.push({ use, on, effects });
   }
 
-  for (const lock of locks) {
+  for (const lock of lockIds) {
     if (!opened.has(lock)) {
       errors.push(`Замок "${lock}" висит на двери, но ни одно правило его не открывает.`);
+    }
+    if (lockNames[lock] === undefined) {
+      errors.push(`Замок "${lock}" висит на двери, но не назван в блоке "locks".`);
+    }
+  }
+  for (const id of Object.keys(lockNames)) {
+    if (!lockIds.has(id)) {
+      errors.push(`Замок "${id}" назван в "locks", но ни на одной двери не висит.`);
     }
   }
 
@@ -647,7 +678,7 @@ export function validateLevel(
     level: {
       id: String(lvl['id'] ?? 'level'),
       spawn: spawn!,
-      rooms, doors, items, triggers, interactions, itemDefs,
+      rooms, doors, items, triggers, interactions, itemDefs, locks: lockNames,
     },
   };
 }

@@ -33,6 +33,73 @@ describe('resolveInteraction', () => {
     if (!outcome.ok) expect(outcome.refusal).toContain('замок');
   });
 
+  /**
+   * Спека §6, уточнение от 26 августа 2026: пока игрок не нажал на цель ни разу,
+   * вместо отказа показывается `untried`. Иначе достаточно мазнуть прицелом по
+   * двери в конце коридора, чтобы узнать, что она заперта, — загадка выдана до
+   * того, как игрок к ней подошёл.
+   */
+  it('до первой попытки запертая дверь выглядит обычной', () => {
+    const w = armed(null);
+    const before = w.describe('d_ab');
+    expect(before.ok).toBe(false);
+    if (!before.ok) {
+      expect(before.untried).toBe('Открыть дверь');
+      expect(before.refusal).toContain('замок');
+    }
+  });
+
+  it('после нажатия дверь навсегда признаётся запертой', () => {
+    const w = armed(null);
+    w.interact('d_ab');
+    const after = w.describe('d_ab');
+    expect(after.ok).toBe(false);
+    // Поле убрано, а не заменено: main.ts ветвится именно по его наличию.
+    if (!after.ok) expect(after.untried).toBeUndefined();
+  });
+
+  it('попытка на одной цели не выдаёт остальные', () => {
+    const w = armed(null);
+    w.interact('lock_ab');
+    const door = w.describe('d_ab');
+    expect(door.ok).toBe(false);
+    if (!door.ok) expect(door.untried).toBe('Открыть дверь');
+  });
+
+  it('замок скрывать нечего: он и так висит на виду', () => {
+    const empty = armed(null).describe('lock_ab');
+    expect(empty.ok).toBe(false);
+    if (!empty.ok) expect(empty.untried).toBeUndefined();
+
+    const wrong = armed('rock').describe('lock_ab');
+    expect(wrong.ok).toBe(false);
+    if (!wrong.ok) expect(wrong.untried).toBeUndefined();
+  });
+
+  /**
+   * Спека §5: замок описывает себя, но не называет ключ. Игрок стоит перед ним и
+   * видит материал — сопоставляет с ключом он сам, а не игра. Название идёт
+   * первым в обоих отказах: иначе, держа неподходящий предмет, игрок вообще не
+   * узнал бы, что за замок перед ним.
+   */
+  it('замок называет себя, когда руки пусты', () => {
+    const outcome = armed(null).describe('lock_ab');
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.refusal).toBe('Латунный замок. Нужно чем-то открыть.');
+  });
+
+  it('замок называет себя и с неподходящим предметом в руках', () => {
+    const outcome = armed('rock').describe('lock_ab');
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.refusal).toBe('Латунный замок. Камень не подходит.');
+  });
+
+  it('нужный ключ замок не называет — это ответ, а не описание', () => {
+    const outcome = armed(null).describe('lock_ab');
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.refusal).not.toContain('Латунный ключ');
+  });
+
   it('без предмета в руках замок открыть нечем', () => {
     const outcome = armed(null).describe('lock_ab');
     expect(outcome.ok).toBe(false);

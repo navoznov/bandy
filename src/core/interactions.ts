@@ -2,7 +2,14 @@ import type { DoorDef, Effect, ItemLocation, Level } from './types';
 
 export type Outcome =
   | { ok: true; prompt: string; effects: Effect[] }
-  | { ok: false; refusal: string };
+  /**
+   * `untried` — что показывать, пока игрок ни разу не нажал на эту цель (спека §6,
+   * уточнение от 26 августа 2026). Заводится только там, где скрытая причина
+   * создаёт интригу: увидеть «Заперто» с другого конца коридора значит получить
+   * загадку, не подойдя к ней. Само разрешение о попытках не знает — что игрок уже
+   * пробовал, помнит `World`, он же это поле и убирает.
+   */
+  | { ok: false; refusal: string; untried?: string };
 
 /** Ровно то, что разрешению нужно от мира. Позволяет обойтись без циклического импорта. */
 export interface WorldView {
@@ -64,15 +71,22 @@ export function resolveInteraction(view: WorldView, targetId: string): Outcome {
         effects: [{ kind: 'take', item: target.id }],
       };
 
-    case 'lock':
+    case 'lock': {
+      // Название идёт первым в обоих отказах: держа неподходящий предмет, игрок
+      // иначе вообще не узнал бы, что за замок перед ним. Запасной текст на случай
+      // безымянного замка — прежний; валидатор такого уровня не пропустит, но
+      // `noUncheckedIndexedAccess` требует ветку, и врать в ней незачем.
+      const lock = view.level.locks[target.id] ?? 'Замок заперт';
       return held === null
-        ? { ok: false, refusal: 'Замок заперт. Нужно чем-то открыть.' }
-        : { ok: false, refusal: `${nameOf(view, held)} сюда не подходит.` };
+        ? { ok: false, refusal: `${lock}. Нужно чем-то открыть.` }
+        : { ok: false, refusal: `${lock}. ${nameOf(view, held)} не подходит.` };
+    }
 
     case 'door': {
       const { door } = target;
       if (door.lock !== undefined && !view.isDestroyed(door.lock)) {
-        return { ok: false, refusal: 'Заперто. На двери висит замок.' };
+        // Запертая дверь никогда не открыта, поэтому текст до попытки всегда этот.
+        return { ok: false, refusal: 'Заперто. На двери висит замок.', untried: 'Открыть дверь' };
       }
       return {
         ok: true,

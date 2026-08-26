@@ -17,6 +17,8 @@ export class World implements WorldView {
   private readonly destroyedIds = new Set<string>();
   private readonly openDoorIds = new Set<string>();
   private readonly flags = new Set<string>();
+  /** Цели, на которые игрок уже нажимал. Это знание игрока, а не правило игры. */
+  private readonly triedIds = new Set<string>();
   private readonly listeners: Array<(event: WorldEvent) => void> = [];
 
   won = false;
@@ -55,12 +57,19 @@ export class World implements WorldView {
 
   /** Что произойдёт, если сейчас нажать «взаимодействовать». Состояние не меняется. */
   describe(targetId: string): Outcome {
-    return resolveInteraction(this, targetId);
+    const outcome = resolveInteraction(this, targetId);
+    // Решение то же самое; меняется только то, что игроку позволено о нём знать.
+    // Поле убирается, а не подменяется: `main.ts` ветвится по его наличию.
+    if (!outcome.ok && this.triedIds.has(targetId)) {
+      return { ok: false, refusal: outcome.refusal };
+    }
+    return outcome;
   }
 
   /** То же решение, но применённое. */
   interact(targetId: string): Outcome {
     const outcome = resolveInteraction(this, targetId);
+    this.triedIds.add(targetId);
     if (outcome.ok) this.applyEffects(outcome.effects);
     return outcome;
   }

@@ -256,7 +256,12 @@ renderer.setAnimationLoop((now) => {
         hud.setPrompt(null);
       } else {
         const outcome = world.describe(targetId);
-        if (outcome.ok) hud.setPrompt(outcome.prompt, input.scheme === 'desktop' ? 'E' : null);
+        const key = input.scheme === 'desktop' ? 'E' : null;
+        if (outcome.ok) hud.setPrompt(outcome.prompt, key);
+        // Пока цель не пробовали, отказ показывается обычной подсказкой — с клавишей
+        // и активным прицелом. Через `setRefusal` красный фон выдал бы загадку не
+        // хуже текста, ради которого всё и затевалось.
+        else if (outcome.untried !== undefined) hud.setPrompt(outcome.untried, key);
         else hud.setRefusal(outcome.refusal);
 
         if (state.interact && input.isLocked()) world.interact(targetId);

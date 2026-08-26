@@ -16,6 +16,7 @@ export function makeTestLevel(): Level {
       { id: 'b', rect: [8, 2, 6, 2], color: '#888888', light: 1 },
     ],
     doors: [{ id: 'd_ab', between: ['a', 'b'], at: [8, 3], lock: 'lock_ab' }],
+    locks: { lock_ab: 'Латунный замок' },
     items: [
       { def: 'key_brass', room: 'a', at: [2, 0.9, 4] },
       { def: 'rock', room: 'a', at: [3, 0.9, 4] },
