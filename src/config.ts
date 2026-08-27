@@ -34,3 +34,13 @@ export const MAX_DELTA_SECONDS = 0.05;
 
 /** Дальность луча прицела в метрах. */
 export const INTERACT_RANGE = 2.5;
+
+/** Настройка игры, а не свойство карты, — поэтому здесь, а не в JSON уровня. */
+export const ANTAGONIST = {
+  speed: 2.6,          // м/с, всегда — и в патруле, и в погоне
+  radius: 0.3,         // как у игрока
+  sight: 12,           // м, дальность обнаружения
+  fov: 1.047,          // ±60° в радианах
+  catchDistance: 1.2,  // м
+  searchSeconds: 6,    // сколько ищет, потеряв игрока
+} as const;
