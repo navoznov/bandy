@@ -1,5 +1,6 @@
 import { ANTAGONIST, DOOR } from '../config';
-import { doorWaypoints, roomAt, roomCenter, roomPath, type Point } from './pathing';
+import { doorWaypoints, pathDistance, roomAt, roomCenter, roomPath, type Point } from './pathing';
+import { canSee } from './vision';
 import type { Aabb } from './colliders';
 import type { AntagonistDef, DoorDef, Level } from './types';
 import type { World } from './world';
@@ -21,6 +22,16 @@ export class Antagonist {
   private queue: Step[] = [];
   private routeIndex = 0;
   private waitLeft = 0;
+  /** Последняя точка, где его видели. Заморожена, пока не увидит снова. */
+  private lastSeen: Point | null = null;
+  private searchLeft = 0;
+  /**
+   * Комната цели преследования, для которой построена текущая очередь — чтобы
+   * не пересчитывать BFS каждый кадр, а только когда игрок сменил комнату.
+   * `undefined` — план не строился (или стал недействителен и должен быть
+   * перестроен); `null` — валидное значение `roomAt()`, цель не в комнате.
+   */
+  private pursuitRoom: string | null | undefined = undefined;
 
   constructor(private readonly level: Level, private readonly world: World) {
     const def = level.antagonist;
@@ -34,10 +45,105 @@ export class Antagonist {
   private passable = (door: DoorDef): boolean =>
     door.lock === undefined || this.world.isDestroyed(door.lock);
 
-  step(dt: number, _player: Point, _boxes: readonly Aabb[]): void {
+  step(dt: number, player: Point, boxes: readonly Aabb[]): void {
     if (this.waitLeft > 0) { this.waitLeft -= dt; return; }
-    if (this.queue.length === 0) this.planPatrol();
+
+    this.seesPlayer = canSee(
+      { x: this.x, z: this.z }, this.facing, player, boxes, ANTAGONIST.sight, ANTAGONIST.fov);
+
+    if (this.seesPlayer) {
+      // Старый план сбрасывается, только если он был патрульным — у ПОГОНИ и
+      // ПОИСКА общая цель (lastSeen), и план между ними общий тоже. Сбрасывать
+      // его при любом возврате из ПОИСКА нельзя: ровно в проёме двери зрение
+      // мигает кадр через кадр, и пересборка каждый раз с первой путевой точки
+      // (она уже позади) раскачивала бы его взад-вперёд на пороге бесконечно.
+      if (this.state === 'patrol') {
+        this.queue = [];
+        this.pursuitRoom = undefined;
+      }
+      this.state = 'chase';
+      this.lastSeen = { ...player };
+      this.searchLeft = ANTAGONIST.searchSeconds;
+    } else if (this.state === 'chase') {
+      this.state = 'search';
+    } else if (this.state === 'search') {
+      this.searchLeft -= dt;
+      if (this.searchLeft <= 0) {
+        const from = roomAt(this.level, { x: this.x, z: this.z }) ?? this.def.spawn.room;
+        this.routeIndex = this.nearestRouteIndex(from);
+        this.state = 'patrol';
+        this.pursuitRoom = undefined;
+        this.queue = [];
+      }
+    }
+
+    if (this.state === 'chase' || this.state === 'search') {
+      this.pursueLastSeen();
+      if (this.state === 'search' && this.queue.length === 0) {
+        // Дошёл, искать больше некуда — осматривается на месте.
+        this.facing += dt;
+        return;
+      }
+    } else if (this.queue.length === 0) {
+      this.planPatrol();
+    }
+
     this.advance(dt);
+  }
+
+  /**
+   * Ведёт к `lastSeen`. В ПОГОНЕ цель жива и в одной с ним комнате обновляется
+   * каждый кадр напрямую, без BFS. В ПОИСКЕ цель заморожена: план (прямая точка
+   * или путевые точки через комнаты) строится один раз и не трогается, пока не
+   * закончится — иначе очередь никогда не опустеет и осмотр на месте не наступит.
+   * Путь между комнатами в обоих случаях пересчитывается только когда сменилась
+   * комната цели, а не каждый кадр.
+   */
+  private pursueLastSeen(): void {
+    const target = this.lastSeen;
+    if (!target) { this.queue = []; return; }
+
+    const from = roomAt(this.level, { x: this.x, z: this.z });
+    const to = roomAt(this.level, target);
+
+    if (this.state === 'chase' && from !== null && from === to) {
+      this.queue = [{ ...target }];
+      return;
+    }
+    if (to === this.pursuitRoom) return;   // план на эту цель уже построен
+    this.pursuitRoom = to;
+
+    if (from === null || to === null) { this.queue = []; return; }
+    if (from === to) {
+      this.queue = [{ ...target }];
+      return;
+    }
+
+    const chain = roomPath(this.level, from, to, this.passable);
+    if (chain === null) {
+      // Игрок ушёл за дверь, которую он открыть не может. Дальше идти
+      // некуда — это и есть механика убежища из спеки §7.
+      this.state = 'search';
+      this.queue = [];
+      return;
+    }
+    const steps = this.pointsAlong(chain);
+    steps.push({ ...target });
+    this.queue = steps;
+  }
+
+  /** Индекс комнаты обхода, до которой сейчас короче всего дойти по графу. */
+  private nearestRouteIndex(from: string): number {
+    let bestIndex = this.routeIndex;
+    let bestLength = Infinity;
+    this.def.route.forEach((target, index) => {
+      const chain = roomPath(this.level, from, target, this.passable);
+      if (chain !== null && chain.length < bestLength) {
+        bestLength = chain.length;
+        bestIndex = index;
+      }
+    });
+    return bestIndex;
   }
 
   private planPatrol(): void {
@@ -110,16 +216,24 @@ export class Antagonist {
       return;
     }
 
-    // Вышел с другой стороны — закрывает за собой. Кроме дверей из keepOpen:
-    // закрытая им дверь кольца съедает отрыв, накопленный за три секунды бега.
+    // Вышел с другой стороны — закрывает за собой, но только в ПАТРУЛЕ. В
+    // ПОГОНЕ и ПОИСКЕ — нет: закрытая им дверь на маршруте побега съедает
+    // отрыв, накопленный за три секунды бега. Кроме дверей из keepOpen:
+    // закрытая им дверь кольца рвёт круг, который для того и рисовался.
+    if (this.state !== 'patrol') return;
     if (this.def.keepOpen.includes(step.door)) return;
     if (this.world.isDoorOpen(step.door)) {
       this.world.applyEffects([{ kind: 'toggleDoor', door: step.door }]);
     }
   }
 
-  /** Пока зрения нет (Task 6), ловли нет тоже. */
-  caught(_player: Point): boolean {
-    return false;
+  caught(player: Point): boolean {
+    if (!this.seesPlayer) return false;
+    return Math.hypot(player.x - this.x, player.z - this.z) <= ANTAGONIST.catchDistance;
+  }
+
+  /** Расстояние по графу комнат — виньетке прямая линия соврала бы сквозь стену. */
+  distanceTo(player: Point): number | null {
+    return pathDistance(this.level, { x: this.x, z: this.z }, player, this.passable);
   }
 }
