@@ -3,10 +3,12 @@ import { INTERACT_RANGE, LOOK, MAX_DELTA_SECONDS, PLAYER } from './config';
 import { activeColliders, buildColliders } from './core/colliders';
 import { resolveMove } from './core/collision';
 import { moveDelta } from './core/movement';
+import { Antagonist } from './core/antagonist';
 import { World } from './core/world';
 import { loadLevel, nextLevelId } from './levels';
 import { createInput, isCoarsePointer } from './input';
 import { buildScene } from './render/scene';
+import { createAntagonistMesh } from './render/antagonist';
 import { createHand } from './render/hand';
 import { createHud } from './ui/hud';
 import { createInventoryUi } from './ui/inventory';
@@ -89,6 +91,12 @@ const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 60);
 camera.rotation.order = 'YXZ';
 
 const { scene, interactables, doors } = buildScene(level, world);
+
+// Антагониста может не быть: блок в JSON уровня необязателен.
+const antagonist = level.antagonist ? new Antagonist(level, world) : null;
+const antagonistMesh = antagonist ? createAntagonistMesh() : null;
+if (antagonistMesh) scene.add(antagonistMesh.group);
+
 const hud = createHud();
 const hand = createHand();
 const inventoryUi = createInventoryUi(world);
@@ -223,10 +231,21 @@ renderer.setAnimationLoop((now) => {
       }
 
       world.checkTriggers(player.x, player.z);
+
+      // Под тем же условием, что и игрок: инвентарь ставит игру на паузу, и без
+      // этого антагонист шёл бы, пока игрок листает рюкзак, и ловил бы его сквозь
+      // оверлей.
+      if (antagonist) {
+        antagonist.step(dt, player, activeColliders(allColliders, world.openDoors()));
+      }
     }
 
     camera.position.set(player.x, PLAYER.eyeHeight, player.z);
     camera.rotation.set(pitch, yaw, 0);
+
+    if (antagonist && antagonistMesh) {
+      antagonistMesh.update(antagonist.x, antagonist.z, antagonist.facing);
+    }
 
     // Анимация створки на паузе намеренно НЕ замирает. Проходимость двери
     // переключается мгновенно в момент toggleDoor и о паузе не знает, поэтому
