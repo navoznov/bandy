@@ -201,6 +201,73 @@ describe('блок antagonist', () => {
       );
     }
   });
+
+  it('комнаты обхода без двери между ними — разорванный обход', () => {
+    const lvl = withAntagonist({ route: ['a', 'c'] });
+    // Комната без единой двери: в обход её включили, а дойти до неё нельзя.
+    (lvl['rooms'] as Array<Record<string, unknown>>).push(
+      { id: 'c', rect: [0, 8, 6, 4], color: '#888888', light: 1 });
+    const result = validateLevel(lvl, itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: из комнаты "a" нет пути в "c" — обход разорван.');
+    }
+  });
+
+  it('несуществующая дверь в keepOpen названа по идентификатору', () => {
+    const result = validateLevel(withAntagonist({ keepOpen: ['d_nope'] }), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: двери "d_nope" из "keepOpen" не существует.');
+    }
+  });
+
+  it('несуществующая комната появления', () => {
+    const result = validateLevel(
+      withAntagonist({ spawn: { room: 'nowhere', x: 1, z: 1 } }), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: комнаты появления "nowhere" не существует.');
+    }
+  });
+
+  it('точка появления вне контура своей комнаты', () => {
+    const result = validateLevel(
+      withAntagonist({ spawn: { room: 'b', x: 100, z: 100 } }), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: точка появления лежит вне комнаты "b".');
+    }
+  });
+
+  it('ни одной достижимой комнаты обхода — тоже ошибка, и другая', () => {
+    // Обход из одной комнаты "a", антагонист заперт в "b": достижимых нуль.
+    const result = validateLevel(
+      withLockedDoor(withAntagonist({ route: ['a'] })), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: из точки появления не достижима ни одна комната обхода.');
+    }
+  });
+
+  it('антагонист не подбирает ключи: достижимость считается со всеми замками на месте', () => {
+    // Ключ лежит в комнате появления антагониста и снимает замок с двери,
+    // ведущей ко второй комнате обхода. Если правило 7 когда-нибудь начнёт
+    // считать достижимость с реальными предметами вместо пустого списка,
+    // антагонист «подберёт» этот ключ, обход станет достижим целиком —
+    // и ошибка исчезнет. Тест сторожит именно это.
+    const lvl = withLockedDoor(withAntagonist());
+    (lvl['items'] as Array<Record<string, unknown>>)[0]!['room'] = 'b';
+    (lvl['items'] as Array<Record<string, unknown>>)[0]!['at'] = [12, 0.02, 3];
+
+    const result = validateLevel(lvl, itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain(
+        'Антагонист: из точки появления достижима только одна комната обхода — патруля не будет.',
+      );
+    }
+  });
 });
 
 describe('doorOnVerticalWall', () => {
