@@ -2,6 +2,10 @@ export const PLAYER = {
   eyeHeight: 1.6,
   radius: 0.3,
   speed: 3,
+  sprintSpeed: 4.5,     // против speed: 3
+  sprintSeconds: 5,     // полный запас = 5 с бега ≈ 22 м, две трети кольца
+  recoverSeconds: 8,    // с нуля до полного
+  sprintUnlock: 0.3,    // ниже — бежать нельзя, пока не наберётся
 } as const;
 
 export const ROOM = {

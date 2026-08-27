@@ -60,6 +60,19 @@ export interface Spawn {
   yaw: number;
 }
 
+export interface AntagonistDef {
+  /** Где он стоит в нулевую секунду. Как spawn игрока, минус yaw: он смотрит туда, куда идёт. */
+  spawn: { room: string; x: number; z: number };
+  /**
+   * Комнаты, которые он обходит по кругу. Список ЦЕЛЕЙ, а не пошаговый путь:
+   * дорогу между ними он ищет сам. Недостижимая сейчас комната из обхода
+   * временно выпадает — так запертая комната становится убежищем.
+   */
+  route: string[];
+  /** Двери, которые он никогда не закрывает за собой. Без них кольцо стояло бы закрытым. */
+  keepOpen: string[];
+}
+
 export interface Level {
   id: string;
   spawn: Spawn;
@@ -75,6 +88,7 @@ export interface Level {
    * запись с полями. Замок описывает себя, но не называет нужный ключ (спека §5).
    */
   locks: Record<string, string>;
+  antagonist?: AntagonistDef;
 }
 
 export type ItemLocation =
