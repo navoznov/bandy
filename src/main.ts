@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { INTERACT_RANGE, LOOK, MAX_DELTA_SECONDS, PLAYER } from './config';
 import { activeColliders, buildColliders } from './core/colliders';
 import { resolveMove } from './core/collision';
+import { canSprint, stepStamina } from './core/stamina';
 import { moveDelta } from './core/movement';
 import { Antagonist } from './core/antagonist';
 import { World } from './core/world';
@@ -107,6 +108,10 @@ const winEl = document.querySelector<HTMLElement>('#win');
 const caughtEl = document.querySelector<HTMLElement>('#caught');
 if (!flashEl || !winEl || !caughtEl) throw new Error('Разметка финала не найдена.');
 
+const staminaEl = document.querySelector<HTMLElement>('#stamina');
+const staminaFill = document.querySelector<HTMLElement>('#stamina-fill');
+if (!staminaEl || !staminaFill) throw new Error('Разметка полоски выносливости не найдена.');
+
 const nextButton = document.querySelector<HTMLButtonElement>('#win-next');
 const againEl = document.querySelector<HTMLElement>('#win-again');
 const nextId = nextLevelId(level.id);
@@ -183,6 +188,9 @@ world.on((event) => {
 const player = { x: level.spawn.x, z: level.spawn.z };
 let yaw = level.spawn.yaw;
 let pitch = 0;
+/** Запас 0..1 и факт бега в прошлом кадре — второе нужно гистерезису `canSprint`. */
+let stamina = 1;
+let sprinting = false;
 
 const input = createInput(canvas);
 
@@ -238,7 +246,21 @@ renderer.setAnimationLoop((now) => {
       pitch -= state.look.dy * LOOK.sensitivity;
       pitch = Math.max(-LOOK.maxPitch, Math.min(LOOK.maxPitch, pitch));
 
-      const delta = moveDelta(state.move, yaw, PLAYER.speed, dt);
+      // Порядок важен: сначала решаем, бежит ли он в ЭТОМ кадре, потом считаем шаг
+      // этой скоростью, потом списываем запас. Иначе полоска и скорость расходятся
+      // на кадр, и на глаз это выглядит как рывок в момент, когда запас кончился.
+      const wantsToMove = state.move.x !== 0 || state.move.y !== 0;
+      sprinting = state.sprint && wantsToMove && canSprint(stamina, sprinting);
+      const speed = sprinting ? PLAYER.sprintSpeed : PLAYER.speed;
+      stamina = stepStamina(stamina, sprinting, dt);
+
+      // Показывается только когда запас неполный: пока игрок исследует, экран
+      // чистый, а полоска появляется в момент первого бега и этим себя объясняет.
+      staminaEl.hidden = stamina >= 1;
+      staminaFill.style.width = `${Math.round(stamina * 100)}%`;
+      input.setSprintAvailable(canSprint(stamina, sprinting));
+
+      const delta = moveDelta(state.move, yaw, speed, dt);
       if (delta.x !== 0 || delta.z !== 0) {
         const boxes = activeColliders(allColliders, world.openDoors());
         const next = resolveMove(player, delta, PLAYER.radius, boxes);

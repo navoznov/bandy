@@ -27,6 +27,16 @@
                 transition: opacity 0.12s; }
       #prompt.visible { opacity: 1; }
       #prompt.refusal { background: rgba(90,20,20,0.7); }
+      /* Внутри #hud, а не отдельным слоем поверх него: полоска — такой же
+         элемент HUD, как прицел, и финальная засветка обязана съедать её тем же
+         порядком. Отсюда position: absolute и ни одного z-index. */
+      #stamina { position: absolute; left: 50%; transform: translateX(-50%);
+                 bottom: calc(16px + env(safe-area-inset-bottom));
+                 width: 180px; height: 6px; border-radius: 3px;
+                 background: rgba(0,0,0,0.45); }
+      #stamina[hidden] { display: none; }
+      #stamina-fill { height: 100%; width: 100%; border-radius: 3px;
+                      background: #d8d4c8; transition: width 0.08s linear; }
       #inventory { position: fixed; inset: 0; display: flex; flex-direction: column;
                    align-items: center; justify-content: center; gap: 10px;
                    background: rgba(10,10,14,0.86); color: #f2f2f2;
@@ -150,6 +160,7 @@
     <div id="hud">
       <div id="reticle"></div>
       <div id="prompt"></div>
+      <div id="stamina" hidden><div id="stamina-fill"></div></div>
     </div>
     <div id="touch" hidden>
       <div id="stick"><div id="stick-knob"></div></div>
