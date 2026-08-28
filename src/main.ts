@@ -104,7 +104,8 @@ const start = createStartOverlay(isCoarsePointer());
 
 const flashEl = document.querySelector<HTMLElement>('#flash');
 const winEl = document.querySelector<HTMLElement>('#win');
-if (!flashEl || !winEl) throw new Error('Разметка финала не найдена.');
+const caughtEl = document.querySelector<HTMLElement>('#caught');
+if (!flashEl || !winEl || !caughtEl) throw new Error('Разметка финала не найдена.');
 
 const nextButton = document.querySelector<HTMLButtonElement>('#win-next');
 const againEl = document.querySelector<HTMLElement>('#win-again');
@@ -117,28 +118,43 @@ if (nextButton && nextId !== null) {
   });
 }
 
+// Хеш не трогаем: перезагрузка поднимет тот же уровень тем же проверенным путём,
+// которым «Дальше» поднимает следующий. Автоматического рестарта нет намеренно —
+// экран, мигнувший на полсекунды, не объяснит игроку, что он потерял пройденное.
+document.querySelector('#caught-again')?.addEventListener('click', () => location.reload());
+
 const winTrigger = level.triggers.find((t) => t.effect === 'win');
+
+/**
+ * Конец игры — победой или поимкой. Пять действий были написаны для экрана
+ * победы; поимка добавляет второй такой же случай, поэтому общая часть здесь.
+ * Это уборка дубля, который создаёт эта же правка, а не рефакторинг заодно.
+ */
+function endGame(overlay: HTMLElement): void {
+  if (document.pointerLockElement) document.exitPointerLock();
+  overlay.hidden = false;
+  // Отпущенный захват иначе тут же вернул бы стартовый экран — поверх оверлея.
+  start.dismiss();
+  // Цикл снимается со СЛЕДУЮЩЕГО кадра, текущий досчитывается до конца, и победа
+  // этим пользуется: засветка и её экран встают на место. Дальше считать нечего —
+  // на тач-схеме `isLocked()` всегда true, и без остановки игрок продолжал бы
+  // ходить за финальным экраном.
+  stopLoop();
+  // Экранное управление лежит ниже оверлея, но кнопка рюкзака — выше него, и на
+  // финальном экране торчала бы одна она. Игра кончилась, убираем всё.
+  document.querySelector('#touch')?.setAttribute('hidden', '');
+  document.querySelector('#btn-bag')?.setAttribute('hidden', '');
+}
 
 world.on((event) => {
   if (event.kind === 'won') {
-    if (document.pointerLockElement) document.exitPointerLock();
-    winEl.hidden = false;
+    endGame(winEl);
     if (nextButton && nextId !== null) {
       nextButton.hidden = false;
       // «Обнови страницу, чтобы пройти заново» относится к последнему уровню.
       // Рядом с кнопкой «Дальше» это два противоречащих совета.
       if (againEl) againEl.hidden = true;
     }
-    // Отпущенный захват иначе тут же вернул бы стартовый экран — поверх засветки.
-    start.dismiss();
-    // Кадр, в котором это случилось, досчитывается до конца — засветка и экран
-    // победы встают на место. Дальше считать нечего: на тач-схеме `isLocked()`
-    // всегда true, и без остановки игрок продолжал бы ходить за белым экраном.
-    stopLoop();
-    // Экранное управление лежит ниже засветки, но кнопка рюкзака — выше неё,
-    // и на белом экране победы торчала бы одна она. Игра кончилась, убираем всё.
-    document.querySelector('#touch')?.setAttribute('hidden', '');
-    document.querySelector('#btn-bag')?.setAttribute('hidden', '');
   }
 });
 
@@ -237,6 +253,11 @@ renderer.setAnimationLoop((now) => {
       // оверлей.
       if (antagonist) {
         antagonist.step(dt, player, activeColliders(allColliders, world.openDoors()));
+        if (antagonist.caught(player)) {
+          endGame(caughtEl);
+          // Кадр досчитывать нечего: экран поимки непрозрачный и закрывает всё.
+          return;
+        }
       }
     }
 

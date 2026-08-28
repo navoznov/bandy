@@ -43,19 +43,27 @@
          а инвентарь поверх неё остаётся читаемым. Экран победы выше всех. */
       #flash { position: fixed; inset: 0; background: #ffffff; opacity: 0;
                pointer-events: none; z-index: 5; }
-      #win { position: fixed; inset: 0; display: flex; flex-direction: column;
-             align-items: center; justify-content: center; gap: 12px;
-             text-align: center; padding: 24px; box-sizing: border-box;
-             z-index: 21; color: #1a1a1a;
-             font: 600 32px/1.4 system-ui, sans-serif; }
-      #win[hidden] { display: none; }
-      #win p { margin: 0; }
+      /* Один набор правил на два финала: победа и поимка отличаются заливкой и
+         цветом текста, раскладка у них общая. */
+      #win, #caught { position: fixed; inset: 0; display: flex; flex-direction: column;
+                      align-items: center; justify-content: center; gap: 12px;
+                      text-align: center; padding: 24px; box-sizing: border-box;
+                      z-index: 21; color: #1a1a1a;
+                      font: 600 32px/1.4 system-ui, sans-serif; }
+      #win[hidden], #caught[hidden] { display: none; }
+      #win p, #caught p { margin: 0; }
       #win .again { font: 16px/1.4 system-ui, sans-serif; opacity: 0.65; }
-      #win button { font: 600 20px system-ui, sans-serif; color: #1a1a1a;
+      #win button, #caught button {
+                    font: 600 20px system-ui, sans-serif; color: #1a1a1a;
                     background: rgba(0,0,0,0.10); border: 2px solid #1a1a1a;
                     border-radius: 10px; padding: 12px 28px; min-height: 48px;
                     cursor: pointer; }
       #win button[hidden] { display: none; }
+      /* Белый фон победе даёт засветка #flash, а поимке дать нечему: без своей
+         заливки тёмный текст лёг бы поверх застывшего кадра игры. */
+      #caught { background: #140b0b; color: #f2e6e6; }
+      #caught button { color: #f2e6e6; background: rgba(255,255,255,0.10);
+                       border-color: #f2e6e6; }
       #touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
       #touch[hidden] { display: none; }
       /* Стик виден и в покое, иначе игрок не догадается, что левая половина
@@ -173,6 +181,10 @@
       <p>Ты выбрался.</p>
       <button id="win-next" type="button" hidden>Дальше</button>
       <p class="again" id="win-again">Это был последний уровень. Обнови страницу, чтобы пройти заново.</p>
+    </div>
+    <div id="caught" hidden>
+      <p>Он тебя нашёл.</p>
+      <button id="caught-again" type="button">Ещё раз</button>
     </div>
     <div id="fatal" hidden><h1 id="fatal-title"></h1><pre id="fatal-body"></pre></div>
     <script type="module" src="/src/main.ts"></script>
