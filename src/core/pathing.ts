@@ -17,6 +17,21 @@ export function roomCenter(room: RoomDef): Point {
   return { x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2 };
 }
 
+/**
+ * Ближайшая точка комнаты, где тело радиуса `radius` не задевает стен. Игрок
+ * в дверном проёме стоит внутри полосы стены на законных основаниях — там дыра.
+ * Антагонисту такая точка целью быть не может: прямая к ней режет стену рядом
+ * с проёмом. Для любой позиции, где игрок стоит внутри комнаты, это тождество:
+ * его собственные коллизии не пускают его ближе INSET к краю прямоугольника.
+ */
+export function clampInside(room: RoomDef, p: Point): Point {
+  const b = roomBounds(room);
+  return {
+    x: Math.min(Math.max(p.x, b.x0 + INSET), b.x1 - INSET),
+    z: Math.min(Math.max(p.z, b.z0 + INSET), b.z1 - INSET),
+  };
+}
+
 export function roomAt(level: Level, p: Point): string | null {
   for (const room of level.rooms) {
     const b = roomBounds(room);

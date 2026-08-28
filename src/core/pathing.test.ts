@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { doorWaypoints, pathDistance, roomPath, roomAt, roomCenter, INSET } from './pathing';
+import {
+  clampInside, doorWaypoints, pathDistance, roomPath, roomAt, roomCenter, INSET,
+} from './pathing';
 import { validateLevel } from './validate';
 import type { ItemDef, Level } from './types';
 
@@ -158,5 +160,29 @@ describe('расстояние по графу комнат', () => {
   it('точка вне всех комнат расстояния не имеет', () => {
     const level = longRoomLevel();
     expect(pathDistance(level, { x: 1, z: 3 }, { x: 100, z: 100 }, () => true)).toBe(null);
+  });
+});
+
+describe('точка, до которой можно дойти телом', () => {
+  const room = { id: 'r', rect: [10, 4, 6, 8], color: '#888888', light: 1 } as const;
+
+  it('точку внутри комнаты не двигает вовсе', () => {
+    // Игрок и так не подходит к стене ближе INSET: его собственный радиус плюс
+    // толщина стены дают ровно тот же отступ. Для любой его законной позиции
+    // отжатие обязано быть тождеством, иначе антагонист целился бы мимо.
+    expect(clampInside(room, { x: 13, z: 8 })).toEqual({ x: 13, z: 8 });
+    expect(clampInside(room, { x: 10 + INSET, z: 4 + INSET }))
+      .toEqual({ x: 10 + INSET, z: 4 + INSET });
+  });
+
+  it('точку в полосе стены отжимает на порог проёма', () => {
+    // Игрок в дверном проёме стоит внутри полосы стены на законных основаниях:
+    // там дыра. Прямая к нему прошла бы сквозь стену рядом с дырой.
+    expect(clampInside(room, { x: 10.05, z: 9 })).toEqual({ x: 10 + INSET, z: 9 });
+    expect(clampInside(room, { x: 13, z: 11.95 })).toEqual({ x: 13, z: 12 - INSET });
+  });
+
+  it('точку за пределами комнаты втягивает внутрь', () => {
+    expect(clampInside(room, { x: 0, z: 0 })).toEqual({ x: 10 + INSET, z: 4 + INSET });
   });
 });

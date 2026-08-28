@@ -89,6 +89,23 @@ function doorCollider(door: DoorDef, level: Level): Aabb {
     : { x0: dx - doorHalf, x1: dx + doorHalf, z0: dz - half, z1: dz + half, doorId: door.id };
 }
 
+/**
+ * Задевает ли тело радиуса `radius` с центром в `p` хоть один коллайдер.
+ * Касание ровно по касательной нарушением не считается: путевые точки отходят
+ * от стены на INSET, то есть ровно на радиус, и строгое сравнение сделало бы
+ * штатный проход по коридору плавающим нарушением на уровне последнего бита.
+ */
+export function bodyHits(
+  p: { x: number; z: number }, radius: number, boxes: readonly Aabb[],
+): Aabb | null {
+  const eps = 1e-9;
+  for (const b of boxes) {
+    if (p.x > b.x0 - radius + eps && p.x < b.x1 + radius - eps
+      && p.z > b.z0 - radius + eps && p.z < b.z1 + radius - eps) return b;
+  }
+  return null;
+}
+
 export function activeColliders(all: Aabb[], openDoors: ReadonlySet<string>): Aabb[] {
   return all.filter((b) => b.doorId === undefined || !openDoors.has(b.doorId));
 }

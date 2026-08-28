@@ -3,7 +3,7 @@ import { Antagonist } from './antagonist';
 import { World } from './world';
 import { loadLevel } from '../levels';
 import { ANTAGONIST } from '../config';
-import { activeColliders, buildColliders } from './colliders';
+import { activeColliders, bodyHits, buildColliders } from './colliders';
 import { roomAt } from './pathing';
 import type { WorldEvent } from './world';
 
@@ -92,15 +92,11 @@ describe('патруль', () => {
     for (let i = 0; i < 300 / 0.016; i++) {
       ai.step(0.016, { x: -100, z: -100 }, []);
       const boxes = activeColliders(all, world.openDoors());
-      for (const b of boxes) {
-        const insideX = ai.x > b.x0 - ANTAGONIST.radius && ai.x < b.x1 + ANTAGONIST.radius;
-        const insideZ = ai.z > b.z0 - ANTAGONIST.radius && ai.z < b.z1 + ANTAGONIST.radius;
-        if (insideX && insideZ) {
-          violations.push(`${(i * 0.016).toFixed(1)} с: (${ai.x.toFixed(2)}, ${ai.z.toFixed(2)})`);
-        }
+      if (bodyHits(ai, ANTAGONIST.radius, boxes)) {
+        violations.push(`${(i * 0.016).toFixed(1)} с: (${ai.x.toFixed(2)}, ${ai.z.toFixed(2)})`);
+        // Первого нарушения достаточно: дальше он всё равно уже не там, где должен.
+        break;
       }
-      // Первого нарушения достаточно: дальше он всё равно уже не там, где должен.
-      if (violations.length > 0) break;
     }
 
     // Одна проверка вместо девятисот тысяч. Сообщение при падении называет

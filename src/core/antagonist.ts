@@ -1,5 +1,7 @@
 import { ANTAGONIST, DOOR } from '../config';
-import { doorWaypoints, pathDistance, roomAt, roomCenter, roomPath, type Point } from './pathing';
+import {
+  clampInside, doorWaypoints, pathDistance, roomAt, roomCenter, roomPath, type Point,
+} from './pathing';
 import { canSee } from './vision';
 import type { Aabb } from './colliders';
 import type { AntagonistDef, DoorDef, Level } from './types';
@@ -41,6 +43,16 @@ export class Antagonist {
     this.z = def.spawn.z;
   }
 
+  /**
+   * Он на отрезке «створ двери»: закрывающая точка ещё в очереди, значит тело
+   * сейчас в полосе стены, в проёме. Менять план в этот момент нельзя — прямая
+   * из проёма в глубину комнаты тянет тело по стене рядом с дырой. Он доходит
+   * до точки за дверью и перестраивает план оттуда, долей секунды позже.
+   */
+  private inDoorway(): boolean {
+    return this.queue[0]?.closing === true;
+  }
+
   /** Запертая дверь для него стена: замки — головоломка игрока. */
   private passable = (door: DoorDef): boolean =>
     door.lock === undefined || this.world.isDestroyed(door.lock);
@@ -57,7 +69,7 @@ export class Antagonist {
       // его при любом возврате из ПОИСКА нельзя: ровно в проёме двери зрение
       // мигает кадр через кадр, и пересборка каждый раз с первой путевой точки
       // (она уже позади) раскачивала бы его взад-вперёд на пороге бесконечно.
-      if (this.state === 'patrol') {
+      if (this.state === 'patrol' && !this.inDoorway()) {
         this.queue = [];
         this.pursuitRoom = undefined;
       }
@@ -68,7 +80,7 @@ export class Antagonist {
       this.state = 'search';
     } else if (this.state === 'search') {
       this.searchLeft -= dt;
-      if (this.searchLeft <= 0) {
+      if (this.searchLeft <= 0 && !this.inDoorway()) {
         const from = roomAt(this.level, { x: this.x, z: this.z }) ?? this.def.spawn.room;
         this.routeIndex = this.nearestRouteIndex(from);
         this.state = 'patrol';
@@ -100,6 +112,8 @@ export class Antagonist {
    * комната цели, а не каждый кадр.
    */
   private pursueLastSeen(): void {
+    if (this.inDoorway()) return;
+
     const target = this.lastSeen;
     if (!target) { this.queue = []; return; }
 
@@ -107,15 +121,22 @@ export class Antagonist {
     const to = roomAt(this.level, target);
 
     if (this.state === 'chase' && from !== null && from === to) {
-      this.queue = [{ ...target }];
+      this.queue = [this.reachable(target, to)];
+      return;
+    }
+    if (from === null || to === null) {
+      // Он сам или цель вне всех комнат. Плана нет — и кэш не ставим: как только
+      // кто-то из двоих вернётся в комнату, план обязан строиться заново, иначе
+      // `null === null` навсегда закроет пересборку и он замрёт с пустой очередью.
+      this.pursuitRoom = undefined;
+      this.queue = [];
       return;
     }
     if (to === this.pursuitRoom) return;   // план на эту цель уже построен
     this.pursuitRoom = to;
 
-    if (from === null || to === null) { this.queue = []; return; }
     if (from === to) {
-      this.queue = [{ ...target }];
+      this.queue = [this.reachable(target, to)];
       return;
     }
 
@@ -128,8 +149,19 @@ export class Antagonist {
       return;
     }
     const steps = this.pointsAlong(chain);
-    steps.push({ ...target });
+    steps.push(this.reachable(target, to));
     this.queue = steps;
+  }
+
+  /**
+   * Цель, до которой он может дойти телом. Игрок в дверном проёме стоит внутри
+   * полосы стены, и прямая к нему режет стену рядом с проёмом; отжатая внутрь
+   * комнаты точка ведёт к тому же порогу, а поймать с неё всё равно можно —
+   * `catchDistance` больше отступа.
+   */
+  private reachable(target: Point, roomId: string): Step {
+    const room = this.level.rooms.find((r) => r.id === roomId);
+    return room ? clampInside(room, target) : { ...target };
   }
 
   /** Индекс комнаты обхода, до которой сейчас короче всего дойти по графу. */
