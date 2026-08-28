@@ -90,9 +90,17 @@ export function createDesktopInput(
     requestLock,
     // Экранной кнопки «Действие» на десктопе нет — подсвечивать нечего.
     setInteractAvailable() {},
+    // Полоски выносливости десктоп тоже не гасит: бежать или нет, игрок видит
+    // по самой полоске, а Shift никуда не девается.
+    setSprintAvailable() {},
     consume() {
       state.move.x = axis('KeyA', 'KeyD');
       state.move.y = axis('KeyW', 'KeyS');
+      // Считается из набора зажатых клавиш ровно так же, как move, а не
+      // выставляется в keydown: pressed очищается по blur и по потере захвата
+      // курсора, и намерение, поставленное обработчиком, после alt-tab осталось
+      // бы включённым навсегда — игрок бежал бы, не держа Shift.
+      state.sprint = pressed.has('ShiftLeft') || pressed.has('ShiftRight');
       state.look.dx = 0;
       state.look.dy = 0;
       state.interact = false;

@@ -7,6 +7,12 @@ export interface InputState {
   interact: boolean;
   /** Фронт нажатия «инвентарь». */
   toggleInventory: boolean;
+  /**
+   * НАМЕРЕНИЕ бежать, а не факт. На десктопе мгновенное (держат Shift), на
+   * телефоне залипающее (тумблер). Решает ли оно что-нибудь — зависит от запаса
+   * выносливости и от того, движется ли игрок; это считает игровой цикл.
+   */
+  sprint: boolean;
 }
 
 /** Какой схемой играют прямо сейчас. Меняется по факту последнего события ввода. */
@@ -35,8 +41,20 @@ export interface InputSource {
    * десктопная не делает ничего. Зовётся каждый кадр.
    */
   setInteractAvailable(available: boolean): void;
+  /**
+   * Можно ли сейчас бежать. Тач-схема этим тускнит кнопку «Бег»; десктопная не
+   * делает ничего. Намерение при этом сохраняется: тумблер не гаснет сам, чтобы
+   * не требовать нового тапа ровно тогда, когда игрок убегает.
+   */
+  setSprintAvailable(available: boolean): void;
 }
 
 export function emptyState(): InputState {
-  return { move: { x: 0, y: 0 }, look: { dx: 0, dy: 0 }, interact: false, toggleInventory: false };
+  return {
+    move: { x: 0, y: 0 },
+    look: { dx: 0, dy: 0 },
+    interact: false,
+    toggleInventory: false,
+    sprint: false,
+  };
 }

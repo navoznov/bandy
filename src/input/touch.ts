@@ -36,7 +36,8 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
   const knob = document.querySelector<HTMLElement>('#stick-knob');
   const useButton = document.querySelector<HTMLButtonElement>('#btn-use');
   const bagButton = document.querySelector<HTMLButtonElement>('#btn-bag');
-  if (!stick || !knob || !useButton || !bagButton) {
+  const sprintButton = document.querySelector<HTMLButtonElement>('#btn-sprint');
+  if (!stick || !knob || !useButton || !bagButton || !sprintButton) {
     throw new Error('Разметка тач-управления не найдена.');
   }
   showTouchUi();
@@ -109,6 +110,13 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
   useButton.addEventListener('click', () => { state.interact = true; });
   bagButton.addEventListener('click', () => { state.toggleInventory = true; });
 
+  // Тумблер, а не удержание: правая половина экрана — свайп обзора, и удержание
+  // парковало бы большой палец, оставляя игрока без возможности повернуть на бегу.
+  sprintButton.addEventListener('click', () => {
+    state.sprint = !state.sprint;
+    sprintButton.classList.toggle('on', state.sprint);
+  });
+
   return {
     state,
     scheme: 'touch',
@@ -117,6 +125,10 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
     // Кнопка найдена при создании источника, поэтому в кадре нет ни поиска
     // по документу, ни ленивого кэша под него.
     setInteractAvailable(available) { useButton.disabled = !available; },
+    // Гаснет только кнопка. Намерение остаётся включённым: сбрасывать его на
+    // нуле запаса значило бы требовать нового тапа ровно в тот момент, когда
+    // игрок убегает и палец занят обзором.
+    setSprintAvailable(available) { sprintButton.disabled = !available; },
     consume() {
       state.look.dx = 0;
       state.look.dy = 0;

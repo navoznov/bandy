@@ -93,5 +93,6 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
     requestLock: () => active().requestLock(),
     consume: () => active().consume(),
     setInteractAvailable: (available) => active().setInteractAvailable(available),
+    setSprintAvailable: (available) => active().setSprintAvailable(available),
   };
 }
