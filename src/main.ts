@@ -12,6 +12,7 @@ import { buildScene } from './render/scene';
 import { createAntagonistMesh } from './render/antagonist';
 import { createHand } from './render/hand';
 import { createHud } from './ui/hud';
+import { createSteps } from './audio/steps';
 import { createDread } from './ui/dread';
 import { createInventoryUi } from './ui/inventory';
 import { createStartOverlay } from './ui/start';
@@ -103,6 +104,16 @@ const hud = createHud();
 const hand = createHand();
 const inventoryUi = createInventoryUi(world);
 const dread = createDread();
+const steps = createSteps();
+
+// AudioContext без жеста пользователя не создаётся. Годится любое первое
+// нажатие: на десктопе им же берут захват курсора, на телефоне им же снимают
+// стартовый экран, — то есть отдельного «разреши звук» игроку не показывают.
+// Оба слушателя одноразовые, а повторный unlock() безвреден: он лишь будит
+// контекст, если тот успел уснуть.
+const unlockAudio = (): void => steps.unlock();
+window.addEventListener('pointerdown', unlockAudio, { once: true });
+window.addEventListener('keydown', unlockAudio, { once: true });
 const start = createStartOverlay(isCoarsePointer());
 
 const flashEl = document.querySelector<HTMLElement>('#flash');
@@ -279,8 +290,20 @@ renderer.setAnimationLoop((now) => {
         antagonist.step(dt, player, activeColliders(allColliders, world.openDoors()));
         // Расстояние по графу комнат, а не по прямой: он бывает в трёх метрах за
         // стеной шахты и в двадцати метрах ходьбы, и тревожить в этот момент
-        // значит врать.
-        dread.update(antagonist.distanceTo(player), antagonist.state === 'chase', dt);
+        // значит врать. Считается один раз на двоих — обход графа не бесплатный,
+        // и разойтись в оценке близости эти двое не должны.
+        const distance = antagonist.distanceTo(player);
+        dread.update(distance, antagonist.state === 'chase', dt);
+
+        // Панорама по углу между взглядом игрока и направлением на антагониста:
+        // «шаги слева» получаются одной строкой. Знак проверен выводом, а не на
+        // слух: камера при yaw смотрит в (-sin, -cos), значит «вправо» — это
+        // (cos, -sin), и sin(relative) — уже готовая проекция на этот вектор.
+        // Контроль: yaw = 0, он на +x (справа) → relative = +π/2 → pan = +1,
+        // правый канал.
+        const toHim = Math.atan2(antagonist.x - player.x, antagonist.z - player.z);
+        const relative = Math.atan2(Math.sin(toHim - yaw), Math.cos(toHim - yaw));
+        steps.update(distance, Math.sin(relative), dt);
         if (antagonist.caught(player)) {
           endGame(caughtEl);
           // Кадр досчитывать нечего: экран поимки непрозрачный и закрывает всё.
