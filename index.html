@@ -14,7 +14,11 @@
     <style>
       html, body { margin: 0; padding: 0; height: 100dvh; overflow: hidden; background: #000; }
       #canvas { display: block; width: 100%; height: 100dvh; touch-action: none; }
-      #hud { position: fixed; inset: 0; pointer-events: none;
+      /* z-index задан явно, чтобы HUD оказался ВЫШЕ виньетки (3): полоска
+         выносливости лежит внизу по центру, в самой тёмной части градиента, и
+         в погоне ушла бы почти в чёрное — ровно тогда, когда по ней и решают,
+         бежать дальше или уже нечем. Ниже засветки (5) — финал съедает всё. */
+      #hud { position: fixed; inset: 0; pointer-events: none; z-index: 4;
              font: 16px/1.4 system-ui, sans-serif; color: #f2f2f2; }
       #reticle { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px;
                  margin: -3px 0 0 -3px; border-radius: 50%;
@@ -49,6 +53,11 @@
                       min-height: 48px; box-sizing: border-box; }
       #inventory li.held { background: rgba(255,212,121,0.22); outline: 2px solid #ffd479; }
       #inventory .hint { opacity: 0.55; font-size: 14px; }
+      /* Тревога по близости антагониста. Ниже HUD (4) и экранного управления (5):
+         ни полоска, ни кнопки темнеть не должны — это не часть мира. */
+      #dread { position: fixed; inset: 0; z-index: 3; pointer-events: none; opacity: 0;
+               background: radial-gradient(ellipse at center,
+                 rgba(0,0,0,0) 35%, rgba(20,0,0,0.85) 100%); }
       /* Ниже инвентаря (z-index 10), но выше HUD: засветка — эффект мира,
          а инвентарь поверх неё остаётся читаемым. Экран победы выше всех. */
       #flash { position: fixed; inset: 0; background: #ffffff; opacity: 0;
@@ -196,6 +205,7 @@
       <p class="hint for-desktop">I или Tab — закрыть</p>
       <p class="hint for-touch">Кнопка «Рюкзак» — закрыть</p>
     </div>
+    <div id="dread"></div>
     <div id="flash"></div>
     <div id="win" hidden>
       <p>Ты выбрался.</p>

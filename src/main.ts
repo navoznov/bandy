@@ -12,6 +12,7 @@ import { buildScene } from './render/scene';
 import { createAntagonistMesh } from './render/antagonist';
 import { createHand } from './render/hand';
 import { createHud } from './ui/hud';
+import { createDread } from './ui/dread';
 import { createInventoryUi } from './ui/inventory';
 import { createStartOverlay } from './ui/start';
 import { hasWebGl, showFatal } from './ui/fatal';
@@ -101,6 +102,7 @@ if (antagonistMesh) scene.add(antagonistMesh.group);
 const hud = createHud();
 const hand = createHand();
 const inventoryUi = createInventoryUi(world);
+const dread = createDread();
 const start = createStartOverlay(isCoarsePointer());
 
 const flashEl = document.querySelector<HTMLElement>('#flash');
@@ -275,6 +277,10 @@ renderer.setAnimationLoop((now) => {
       // оверлей.
       if (antagonist) {
         antagonist.step(dt, player, activeColliders(allColliders, world.openDoors()));
+        // Расстояние по графу комнат, а не по прямой: он бывает в трёх метрах за
+        // стеной шахты и в двадцати метрах ходьбы, и тревожить в этот момент
+        // значит врать.
+        dread.update(antagonist.distanceTo(player), antagonist.state === 'chase', dt);
         if (antagonist.caught(player)) {
           endGame(caughtEl);
           // Кадр досчитывать нечего: экран поимки непрозрачный и закрывает всё.
