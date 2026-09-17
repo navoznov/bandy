@@ -111,9 +111,14 @@ const steps = createSteps();
 // стартовый экран, — то есть отдельного «разреши звук» игроку не показывают.
 // Оба слушателя одноразовые, а повторный unlock() безвреден: он лишь будит
 // контекст, если тот успел уснуть.
-const unlockAudio = (): void => steps.unlock();
-window.addEventListener('pointerdown', unlockAudio, { once: true });
-window.addEventListener('keydown', unlockAudio, { once: true });
+//
+// Только на уровне с антагонистом: единственный источник звука — его шаги, и
+// на первых двух уровнях аудиопоток поднимался бы ради тишины.
+if (level.antagonist) {
+  const unlockAudio = (): void => steps.unlock();
+  window.addEventListener('pointerdown', unlockAudio, { once: true });
+  window.addEventListener('keydown', unlockAudio, { once: true });
+}
 const start = createStartOverlay(isCoarsePointer());
 
 const flashEl = document.querySelector<HTMLElement>('#flash');
@@ -298,12 +303,11 @@ renderer.setAnimationLoop((now) => {
         // Панорама по углу между взглядом игрока и направлением на антагониста:
         // «шаги слева» получаются одной строкой. Знак проверен выводом, а не на
         // слух: камера при yaw смотрит в (-sin, -cos), значит «вправо» — это
-        // (cos, -sin), и sin(relative) — уже готовая проекция на этот вектор.
-        // Контроль: yaw = 0, он на +x (справа) → relative = +π/2 → pan = +1,
-        // правый канал.
+        // (cos, -sin), и sin(toHim - yaw) — уже готовая проекция на этот вектор.
+        // Контроль: yaw = 0, он на +x (справа) → угол +π/2 → pan = +1, правый
+        // канал. Приводить разность углов к (-π, π] незачем: синус периодичен.
         const toHim = Math.atan2(antagonist.x - player.x, antagonist.z - player.z);
-        const relative = Math.atan2(Math.sin(toHim - yaw), Math.cos(toHim - yaw));
-        steps.update(distance, Math.sin(relative), dt);
+        steps.update(distance, Math.sin(toHim - yaw), dt);
         if (antagonist.caught(player)) {
           endGame(caughtEl);
           // Кадр досчитывать нечего: экран поимки непрозрачный и закрывает всё.
