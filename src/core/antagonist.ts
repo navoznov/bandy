@@ -58,10 +58,15 @@ export class Antagonist {
     door.lock === undefined || this.world.isDestroyed(door.lock);
 
   step(dt: number, player: Point, boxes: readonly Aabb[]): void {
-    if (this.waitLeft > 0) { this.waitLeft -= dt; return; }
-
+    // Зрение пересчитывается ПЕРВЫМ, до выхода по `waitLeft`. Автомат состояний
+    // на время открывания створки замирает — это замысел, — но `caught()` читает
+    // `seesPlayer` снаружи, и с несвежим флагом ловля 0.4 с опиралась бы на то,
+    // что он видел до двери. Спека §11 требует видимости в момент ловли, а не
+    // когда-то раньше; цена ложной ловли — весь уровень заново.
     this.seesPlayer = canSee(
       { x: this.x, z: this.z }, this.facing, player, boxes, ANTAGONIST.sight, ANTAGONIST.fov);
+
+    if (this.waitLeft > 0) { this.waitLeft -= dt; return; }
 
     if (this.seesPlayer) {
       // Старый план сбрасывается, только если он был патрульным — у ПОГОНИ и
@@ -259,6 +264,11 @@ export class Antagonist {
     }
   }
 
+  /**
+   * Зовётся СРАЗУ ПОСЛЕ `step()` в том же кадре: читает `seesPlayer`, а тот
+   * обновляется только внутри `step()`. Вызов без предшествующего шага вернёт
+   * ответ по состоянию прошлого кадра.
+   */
   caught(player: Point): boolean {
     if (!this.seesPlayer) return false;
     return Math.hypot(player.x - this.x, player.z - this.z) <= ANTAGONIST.catchDistance;
