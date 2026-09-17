@@ -103,11 +103,23 @@ export function pathDistance(
   const chain = roomPath(level, fromRoom, toRoom, passable);
   if (chain === null) return null;
 
+  // Ломаная через ПРОЁМЫ, а не через центры комнат. Центры казались безобидным
+  // упрощением, но они уводят путь в глубь каждой комнаты и обратно: две точки
+  // по разные стороны одной двери получали 9 м вместо 0.9. Цена — виньетка и
+  // шаги, единственное честное предупреждение в игре, врали сильнее всего на
+  // углах кольца, то есть ровно в арене погони.
+  //
+  // Точность тут и не нужна: число потребляют два канала тревоги, а не поиск
+  // пути. Сумма отрезков через точки дверей — оценка снизу настоящего обхода,
+  // и она честно отличается от прямой сквозь стену, ради чего всё и затевалось.
   let total = 0;
   let cursor = from;
   for (let i = 1; i < chain.length; i++) {
-    const room = level.rooms.find((r) => r.id === chain[i]!)!;
-    const next = roomCenter(room);
+    // Дверь, по которой roomPath и построил это звено: тот же предикат
+    // проходимости, иначе можно выбрать запертую дверь между теми же комнатами.
+    const door = level.doors.find(
+      (d) => d.between.includes(chain[i - 1]!) && d.between.includes(chain[i]!) && passable(d))!;
+    const next = { x: door.at[0], z: door.at[1] };
     total += Math.hypot(next.x - cursor.x, next.z - cursor.z);
     cursor = next;
   }

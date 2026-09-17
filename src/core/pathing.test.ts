@@ -3,6 +3,7 @@ import {
   clampInside, doorWaypoints, pathDistance, roomPath, roomAt, roomCenter, INSET,
 } from './pathing';
 import { validateLevel } from './validate';
+import { loadLevel } from '../levels';
 import type { ItemDef, Level } from './types';
 
 const NO_DEFS: Record<string, ItemDef> = {};
@@ -140,16 +141,35 @@ describe('поиск пути по графу комнат', () => {
 });
 
 describe('расстояние по графу комнат', () => {
-  it('считается от переданных точек, а не от центров комнат', () => {
+  it('идёт через проём, а не сквозь стену', () => {
     const level = longRoomLevel();
     const from = { x: 1, z: 3 };    // в `hall`
     const to = { x: 19, z: 7 };     // в дальнем конце `long`
 
-    // Путь: from -> центр `long` (10, 7) -> to. Это 9.849 + 9 = 18.849.
+    // Путь: from -> проём `d_in` (1, 6) -> to. Это 3 + 18.028 = 21.028.
     // По прямой было бы 18.439 — расстояние обязано отличаться от неё, иначе
     // виньетка тревожила бы игрока сквозь стены.
-    expect(pathDistance(level, from, to, () => true)).toBeCloseTo(18.849, 2);
+    expect(pathDistance(level, from, to, () => true)).toBeCloseTo(21.028, 2);
     expect(Math.hypot(to.x - from.x, to.z - from.z)).toBeCloseTo(18.439, 2);
+  });
+
+  it('соседей по разные стороны проёма не разносит на длину комнаты', () => {
+    // Худший случай, найденный ревью на боевом level_03: игрок и антагонист в
+    // 0.45 м друг от друга по разные стороны проёма `d_ring_se` (15, 6) — это
+    // угол кольца, место, где в погоне разворачиваются. Путь через центры комнат
+    // давал здесь 9.03 м: обе точки уводились в центр `hall_s` (11, 5) и обратно.
+    // Виньетка и шаги — единственное честное предупреждение в игре (спека §12) —
+    // светили и звучали вполсилы в полуметре от поимки.
+    const loaded = loadLevel('level_03');
+    if (!loaded.ok) throw new Error(loaded.errors.join('\n'));
+    const inHallE = { x: 15.4, z: 6.2 };
+    const inHallS = { x: 15.4, z: 5.8 };
+
+    const straight = Math.hypot(inHallE.x - inHallS.x, inHallE.z - inHallS.z);
+    expect(straight).toBeCloseTo(0.4, 6);
+    // Через точку проёма: 0.447 туда и 0.447 обратно. Больше прямой — путь
+    // обязан идти через дверь, а не сквозь стену, — но не в двадцать раз.
+    expect(pathDistance(loaded.level, inHallE, inHallS, () => true)).toBeCloseTo(0.894, 2);
   });
 
   it('без прохода расстояния нет', () => {
