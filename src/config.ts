@@ -2,6 +2,10 @@ export const PLAYER = {
   eyeHeight: 1.6,
   radius: 0.3,
   speed: 3,
+  sprintSpeed: 4.5,     // против speed: 3
+  sprintSeconds: 5,     // полный запас = 5 с бега ≈ 22 м, две трети кольца
+  recoverSeconds: 8,    // с нуля до полного
+  sprintUnlock: 0.3,    // ниже — бежать нельзя, пока не наберётся
 } as const;
 
 export const ROOM = {
@@ -34,3 +38,13 @@ export const MAX_DELTA_SECONDS = 0.05;
 
 /** Дальность луча прицела в метрах. */
 export const INTERACT_RANGE = 2.5;
+
+/** Настройка игры, а не свойство карты, — поэтому здесь, а не в JSON уровня. */
+export const ANTAGONIST = {
+  speed: 2.6,          // м/с, всегда — и в патруле, и в погоне
+  radius: 0.3,         // как у игрока
+  sight: 12,           // м, дальность обнаружения
+  fov: 1.047,          // ±60° в радианах
+  catchDistance: 1.2,  // м
+  searchSeconds: 6,    // сколько ищет, потеряв игрока
+} as const;

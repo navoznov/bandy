@@ -14,7 +14,11 @@
     <style>
       html, body { margin: 0; padding: 0; height: 100dvh; overflow: hidden; background: #000; }
       #canvas { display: block; width: 100%; height: 100dvh; touch-action: none; }
-      #hud { position: fixed; inset: 0; pointer-events: none;
+      /* z-index задан явно, чтобы HUD оказался ВЫШЕ виньетки (3): полоска
+         выносливости лежит внизу по центру, в самой тёмной части градиента, и
+         в погоне ушла бы почти в чёрное — ровно тогда, когда по ней и решают,
+         бежать дальше или уже нечем. Ниже засветки (5) — финал съедает всё. */
+      #hud { position: fixed; inset: 0; pointer-events: none; z-index: 4;
              font: 16px/1.4 system-ui, sans-serif; color: #f2f2f2; }
       #reticle { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px;
                  margin: -3px 0 0 -3px; border-radius: 50%;
@@ -27,6 +31,16 @@
                 transition: opacity 0.12s; }
       #prompt.visible { opacity: 1; }
       #prompt.refusal { background: rgba(90,20,20,0.7); }
+      /* Внутри #hud, а не отдельным слоем поверх него: полоска — такой же
+         элемент HUD, как прицел, и финальная засветка обязана съедать её тем же
+         порядком. Отсюда position: absolute и ни одного z-index. */
+      #stamina { position: absolute; left: 50%; transform: translateX(-50%);
+                 bottom: calc(16px + env(safe-area-inset-bottom));
+                 width: 180px; height: 6px; border-radius: 3px;
+                 background: rgba(0,0,0,0.45); }
+      #stamina[hidden] { display: none; }
+      #stamina-fill { height: 100%; width: 100%; border-radius: 3px;
+                      background: #d8d4c8; transition: width 0.08s linear; }
       #inventory { position: fixed; inset: 0; display: flex; flex-direction: column;
                    align-items: center; justify-content: center; gap: 10px;
                    background: rgba(10,10,14,0.86); color: #f2f2f2;
@@ -39,23 +53,36 @@
                       min-height: 48px; box-sizing: border-box; }
       #inventory li.held { background: rgba(255,212,121,0.22); outline: 2px solid #ffd479; }
       #inventory .hint { opacity: 0.55; font-size: 14px; }
+      /* Тревога по близости антагониста. Ниже HUD (4) и экранного управления (5):
+         ни полоска, ни кнопки темнеть не должны — это не часть мира. */
+      #dread { position: fixed; inset: 0; z-index: 3; pointer-events: none; opacity: 0;
+               background: radial-gradient(ellipse at center,
+                 rgba(0,0,0,0) 35%, rgba(20,0,0,0.85) 100%); }
       /* Ниже инвентаря (z-index 10), но выше HUD: засветка — эффект мира,
          а инвентарь поверх неё остаётся читаемым. Экран победы выше всех. */
       #flash { position: fixed; inset: 0; background: #ffffff; opacity: 0;
                pointer-events: none; z-index: 5; }
-      #win { position: fixed; inset: 0; display: flex; flex-direction: column;
-             align-items: center; justify-content: center; gap: 12px;
-             text-align: center; padding: 24px; box-sizing: border-box;
-             z-index: 21; color: #1a1a1a;
-             font: 600 32px/1.4 system-ui, sans-serif; }
-      #win[hidden] { display: none; }
-      #win p { margin: 0; }
+      /* Один набор правил на два финала: победа и поимка отличаются заливкой и
+         цветом текста, раскладка у них общая. */
+      #win, #caught { position: fixed; inset: 0; display: flex; flex-direction: column;
+                      align-items: center; justify-content: center; gap: 12px;
+                      text-align: center; padding: 24px; box-sizing: border-box;
+                      z-index: 21; color: #1a1a1a;
+                      font: 600 32px/1.4 system-ui, sans-serif; }
+      #win[hidden], #caught[hidden] { display: none; }
+      #win p, #caught p { margin: 0; }
       #win .again { font: 16px/1.4 system-ui, sans-serif; opacity: 0.65; }
-      #win button { font: 600 20px system-ui, sans-serif; color: #1a1a1a;
+      #win button, #caught button {
+                    font: 600 20px system-ui, sans-serif; color: #1a1a1a;
                     background: rgba(0,0,0,0.10); border: 2px solid #1a1a1a;
                     border-radius: 10px; padding: 12px 28px; min-height: 48px;
                     cursor: pointer; }
       #win button[hidden] { display: none; }
+      /* Белый фон победе даёт засветка #flash, а поимке дать нечему: без своей
+         заливки тёмный текст лёг бы поверх застывшего кадра игры. */
+      #caught { background: #140b0b; color: #f2e6e6; }
+      #caught button { color: #f2e6e6; background: rgba(255,255,255,0.10);
+                       border-color: #f2e6e6; }
       #touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
       #touch[hidden] { display: none; }
       /* Стик виден и в покое, иначе игрок не догадается, что левая половина
@@ -81,6 +108,16 @@
       .touch-btn:disabled { opacity: 0.35; }
       #btn-use { right: calc(20px + env(safe-area-inset-right));
                  bottom: calc(28px + env(safe-area-inset-bottom)); }
+      /* Над «Действием»: 28 + 64 = 92, отсюда 104 — двенадцать пикселей зазора.
+         Впритык эти две кнопки соседствовать не должны: промах пальцем на бегу
+         означает либо потерю спринта, либо действие, которого никто не просил. */
+      /* min-height НЕ переопределяется: у `.touch-btn` он 64, а правило по id
+         перебило бы класс по специфичности и СНИЗИЛО бы кнопку до 48. Сосед
+         снизу — «Действие» высотой 64; меньшая цель прямо над большей — это тот
+         самый промах пальцем, ради которого кнопка и отодвинута на 104. */
+      #btn-sprint { right: calc(20px + env(safe-area-inset-right));
+                    bottom: calc(104px + env(safe-area-inset-bottom)); }
+      #btn-sprint.on { outline: 2px solid #fff; }
       /* Лежит СНАРУЖИ #touch и выше инвентаря (10). Внутри #touch это не работает:
          `position: fixed` создаёт контекст наложения ВСЕГДА, независимо от z-index,
          поэтому z-index потомка не может перебить соседний #inventory. Проверено
@@ -136,10 +173,12 @@
     <div id="hud">
       <div id="reticle"></div>
       <div id="prompt"></div>
+      <div id="stamina" hidden><div id="stamina-fill"></div></div>
     </div>
     <div id="touch" hidden>
       <div id="stick"><div id="stick-knob"></div></div>
       <button id="btn-use" class="touch-btn" type="button">Действие</button>
+      <button id="btn-sprint" class="touch-btn" type="button">Бег</button>
     </div>
     <button id="btn-bag" class="touch-btn" type="button" hidden>Рюкзак</button>
     <div id="rotate" hidden><p>Поверни телефон горизонтально</p></div>
@@ -151,6 +190,7 @@
         <li>Мышь — осмотреться</li>
         <li>E — действие</li>
         <li>I или Tab — рюкзак</li>
+        <li>Shift — бежать</li>
         <li>Escape — пауза</li>
       </ul>
       <ul class="for-touch">
@@ -158,6 +198,7 @@
         <li>Свайп справа — осмотреться</li>
         <li>Кнопка «Действие» — действие</li>
         <li>Кнопка «Рюкзак» — инвентарь</li>
+        <li>Кнопка «Бег» — бежать</li>
       </ul>
     </div>
     <div id="inventory" hidden>
@@ -168,11 +209,16 @@
       <p class="hint for-desktop">I или Tab — закрыть</p>
       <p class="hint for-touch">Кнопка «Рюкзак» — закрыть</p>
     </div>
+    <div id="dread"></div>
     <div id="flash"></div>
     <div id="win" hidden>
       <p>Ты выбрался.</p>
       <button id="win-next" type="button" hidden>Дальше</button>
       <p class="again" id="win-again">Это был последний уровень. Обнови страницу, чтобы пройти заново.</p>
+    </div>
+    <div id="caught" hidden>
+      <p>Он тебя нашёл.</p>
+      <button id="caught-again" type="button">Ещё раз</button>
     </div>
     <div id="fatal" hidden><h1 id="fatal-title"></h1><pre id="fatal-body"></pre></div>
     <script type="module" src="/src/main.ts"></script>

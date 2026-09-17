@@ -2,13 +2,18 @@ import * as THREE from 'three';
 import { INTERACT_RANGE, LOOK, MAX_DELTA_SECONDS, PLAYER } from './config';
 import { activeColliders, buildColliders } from './core/colliders';
 import { resolveMove } from './core/collision';
+import { canSprint, stepStamina } from './core/stamina';
 import { moveDelta } from './core/movement';
+import { Antagonist } from './core/antagonist';
 import { World } from './core/world';
 import { loadLevel, nextLevelId } from './levels';
 import { createInput, isCoarsePointer } from './input';
 import { buildScene } from './render/scene';
+import { createAntagonistMesh } from './render/antagonist';
 import { createHand } from './render/hand';
 import { createHud } from './ui/hud';
+import { createSteps } from './audio/steps';
+import { createDread } from './ui/dread';
 import { createInventoryUi } from './ui/inventory';
 import { createStartOverlay } from './ui/start';
 import { hasWebGl, showFatal } from './ui/fatal';
@@ -89,14 +94,41 @@ const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 60);
 camera.rotation.order = 'YXZ';
 
 const { scene, interactables, doors } = buildScene(level, world);
+
+// Антагониста может не быть: блок в JSON уровня необязателен.
+const antagonist = level.antagonist ? new Antagonist(level, world) : null;
+const antagonistMesh = antagonist ? createAntagonistMesh() : null;
+if (antagonistMesh) scene.add(antagonistMesh.group);
+
 const hud = createHud();
 const hand = createHand();
 const inventoryUi = createInventoryUi(world);
+const dread = createDread();
+const steps = createSteps();
+
+// AudioContext без жеста пользователя не создаётся. Годится любое первое
+// нажатие: на десктопе им же берут захват курсора, на телефоне им же снимают
+// стартовый экран, — то есть отдельного «разреши звук» игроку не показывают.
+// Оба слушателя одноразовые, а повторный unlock() безвреден: он лишь будит
+// контекст, если тот успел уснуть.
+//
+// Только на уровне с антагонистом: единственный источник звука — его шаги, и
+// на первых двух уровнях аудиопоток поднимался бы ради тишины.
+if (level.antagonist) {
+  const unlockAudio = (): void => steps.unlock();
+  window.addEventListener('pointerdown', unlockAudio, { once: true });
+  window.addEventListener('keydown', unlockAudio, { once: true });
+}
 const start = createStartOverlay(isCoarsePointer());
 
 const flashEl = document.querySelector<HTMLElement>('#flash');
 const winEl = document.querySelector<HTMLElement>('#win');
-if (!flashEl || !winEl) throw new Error('Разметка финала не найдена.');
+const caughtEl = document.querySelector<HTMLElement>('#caught');
+if (!flashEl || !winEl || !caughtEl) throw new Error('Разметка финала не найдена.');
+
+const staminaEl = document.querySelector<HTMLElement>('#stamina');
+const staminaFill = document.querySelector<HTMLElement>('#stamina-fill');
+if (!staminaEl || !staminaFill) throw new Error('Разметка полоски выносливости не найдена.');
 
 const nextButton = document.querySelector<HTMLButtonElement>('#win-next');
 const againEl = document.querySelector<HTMLElement>('#win-again');
@@ -109,28 +141,43 @@ if (nextButton && nextId !== null) {
   });
 }
 
+// Хеш не трогаем: перезагрузка поднимет тот же уровень тем же проверенным путём,
+// которым «Дальше» поднимает следующий. Автоматического рестарта нет намеренно —
+// экран, мигнувший на полсекунды, не объяснит игроку, что он потерял пройденное.
+document.querySelector('#caught-again')?.addEventListener('click', () => location.reload());
+
 const winTrigger = level.triggers.find((t) => t.effect === 'win');
+
+/**
+ * Конец игры — победой или поимкой. Пять действий были написаны для экрана
+ * победы; поимка добавляет второй такой же случай, поэтому общая часть здесь.
+ * Это уборка дубля, который создаёт эта же правка, а не рефакторинг заодно.
+ */
+function endGame(overlay: HTMLElement): void {
+  if (document.pointerLockElement) document.exitPointerLock();
+  overlay.hidden = false;
+  // Отпущенный захват иначе тут же вернул бы стартовый экран — поверх оверлея.
+  start.dismiss();
+  // Цикл снимается со СЛЕДУЮЩЕГО кадра, текущий досчитывается до конца, и победа
+  // этим пользуется: засветка и её экран встают на место. Дальше считать нечего —
+  // на тач-схеме `isLocked()` всегда true, и без остановки игрок продолжал бы
+  // ходить за финальным экраном.
+  stopLoop();
+  // Экранное управление лежит ниже оверлея, но кнопка рюкзака — выше него, и на
+  // финальном экране торчала бы одна она. Игра кончилась, убираем всё.
+  document.querySelector('#touch')?.setAttribute('hidden', '');
+  document.querySelector('#btn-bag')?.setAttribute('hidden', '');
+}
 
 world.on((event) => {
   if (event.kind === 'won') {
-    if (document.pointerLockElement) document.exitPointerLock();
-    winEl.hidden = false;
+    endGame(winEl);
     if (nextButton && nextId !== null) {
       nextButton.hidden = false;
       // «Обнови страницу, чтобы пройти заново» относится к последнему уровню.
       // Рядом с кнопкой «Дальше» это два противоречащих совета.
       if (againEl) againEl.hidden = true;
     }
-    // Отпущенный захват иначе тут же вернул бы стартовый экран — поверх засветки.
-    start.dismiss();
-    // Кадр, в котором это случилось, досчитывается до конца — засветка и экран
-    // победы встают на место. Дальше считать нечего: на тач-схеме `isLocked()`
-    // всегда true, и без остановки игрок продолжал бы ходить за белым экраном.
-    stopLoop();
-    // Экранное управление лежит ниже засветки, но кнопка рюкзака — выше неё,
-    // и на белом экране победы торчала бы одна она. Игра кончилась, убираем всё.
-    document.querySelector('#touch')?.setAttribute('hidden', '');
-    document.querySelector('#btn-bag')?.setAttribute('hidden', '');
   }
 });
 
@@ -159,6 +206,9 @@ world.on((event) => {
 const player = { x: level.spawn.x, z: level.spawn.z };
 let yaw = level.spawn.yaw;
 let pitch = 0;
+/** Запас 0..1 и факт бега в прошлом кадре — второе нужно гистерезису `canSprint`. */
+let stamina = 1;
+let sprinting = false;
 
 const input = createInput(canvas);
 
@@ -214,7 +264,21 @@ renderer.setAnimationLoop((now) => {
       pitch -= state.look.dy * LOOK.sensitivity;
       pitch = Math.max(-LOOK.maxPitch, Math.min(LOOK.maxPitch, pitch));
 
-      const delta = moveDelta(state.move, yaw, PLAYER.speed, dt);
+      // Порядок важен: сначала решаем, бежит ли он в ЭТОМ кадре, потом считаем шаг
+      // этой скоростью, потом списываем запас. Иначе полоска и скорость расходятся
+      // на кадр, и на глаз это выглядит как рывок в момент, когда запас кончился.
+      const wantsToMove = state.move.x !== 0 || state.move.y !== 0;
+      sprinting = state.sprint && wantsToMove && canSprint(stamina, sprinting);
+      const speed = sprinting ? PLAYER.sprintSpeed : PLAYER.speed;
+      stamina = stepStamina(stamina, sprinting, dt);
+
+      // Показывается только когда запас неполный: пока игрок исследует, экран
+      // чистый, а полоска появляется в момент первого бега и этим себя объясняет.
+      staminaEl.hidden = stamina >= 1;
+      staminaFill.style.width = `${Math.round(stamina * 100)}%`;
+      input.setSprintAvailable(canSprint(stamina, sprinting));
+
+      const delta = moveDelta(state.move, yaw, speed, dt);
       if (delta.x !== 0 || delta.z !== 0) {
         const boxes = activeColliders(allColliders, world.openDoors());
         const next = resolveMove(player, delta, PLAYER.radius, boxes);
@@ -223,10 +287,41 @@ renderer.setAnimationLoop((now) => {
       }
 
       world.checkTriggers(player.x, player.z);
+
+      // Под тем же условием, что и игрок: инвентарь ставит игру на паузу, и без
+      // этого антагонист шёл бы, пока игрок листает рюкзак, и ловил бы его сквозь
+      // оверлей.
+      if (antagonist) {
+        antagonist.step(dt, player, activeColliders(allColliders, world.openDoors()));
+        // Расстояние по графу комнат, а не по прямой: он бывает в трёх метрах за
+        // стеной шахты и в двадцати метрах ходьбы, и тревожить в этот момент
+        // значит врать. Считается один раз на двоих — обход графа не бесплатный,
+        // и разойтись в оценке близости эти двое не должны.
+        const distance = antagonist.distanceTo(player);
+        dread.update(distance, antagonist.state === 'chase', dt);
+
+        // Панорама по углу между взглядом игрока и направлением на антагониста:
+        // «шаги слева» получаются одной строкой. Знак проверен выводом, а не на
+        // слух: камера при yaw смотрит в (-sin, -cos), значит «вправо» — это
+        // (cos, -sin), и sin(toHim - yaw) — уже готовая проекция на этот вектор.
+        // Контроль: yaw = 0, он на +x (справа) → угол +π/2 → pan = +1, правый
+        // канал. Приводить разность углов к (-π, π] незачем: синус периодичен.
+        const toHim = Math.atan2(antagonist.x - player.x, antagonist.z - player.z);
+        steps.update(distance, Math.sin(toHim - yaw), dt);
+        if (antagonist.caught(player)) {
+          endGame(caughtEl);
+          // Кадр досчитывать нечего: экран поимки непрозрачный и закрывает всё.
+          return;
+        }
+      }
     }
 
     camera.position.set(player.x, PLAYER.eyeHeight, player.z);
     camera.rotation.set(pitch, yaw, 0);
+
+    if (antagonist && antagonistMesh) {
+      antagonistMesh.update(antagonist.x, antagonist.z, antagonist.facing);
+    }
 
     // Анимация створки на паузе намеренно НЕ замирает. Проходимость двери
     // переключается мгновенно в момент toggleDoor и о паузе не знает, поэтому

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveMove } from './collision';
 import type { Aabb } from './colliders';
+import { MAX_DELTA_SECONDS, PLAYER } from '../config';
 
 /** Вертикальная стена: полоса по x от 5.0 до 5.2, тянется по z от 0 до 10. */
 const wallEast: Aabb = { x0: 5, x1: 5.2, z0: 0, z1: 10 };
@@ -57,5 +58,24 @@ describe('resolveMove', () => {
     const right: Aabb = { x0: 5, x1: 5.2, z0: 3.5, z1: 10 };
     const result = resolveMove({ x: 4.5, z: 3 }, { x: 1, z: 0 }, R, [left, right]);
     expect(result.x).toBeCloseTo(5.5, 6);
+  });
+
+  /**
+   * CLAUDE.md обосновывал отсутствие свипа словами «при 3 м/с и кадре 16 мс
+   * смещение 5 см». На 4.5 м/с и клампе dt в 50 мс это 22 см — больше толщины
+   * стены. Обрезка в resolveMove идёт по факту пересечения грани, а не по
+   * попаданию внутрь, то есть свип по осям там уже есть. Проверяем, а не верим.
+   *
+   * Старт перебирается по всей полосе подхода: из одной фиксированной точки
+   * шаг спринта в стену может и не упереться, и тест пройдёт на резольвере,
+   * который вообще ничего не делает.
+   */
+  it('на скорости спринта и максимальном шаге времени не проходит сквозь стену', () => {
+    const wall: Aabb = { x0: 1, x1: 1.2, z0: -5, z1: 5 };
+    const step = PLAYER.sprintSpeed * MAX_DELTA_SECONDS;
+    for (let x = 0; x < 1 - PLAYER.radius; x += 0.01) {
+      const next = resolveMove({ x, z: 0 }, { x: step, z: 0 }, PLAYER.radius, [wall]);
+      expect(next.x).toBeLessThanOrEqual(1 - PLAYER.radius + 1e-9);
+    }
   });
 });

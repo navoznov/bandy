@@ -47,6 +47,12 @@
     "lock_silver": "Серебряный замок"
   },
 
+  "antagonist": {
+    "spawn": { "room": "hall_n", "x": 11, "z": 13 },
+    "route": ["kitchen", "study", "store", "bedroom"],
+    "keepOpen": ["d_ring_sw", "d_ring_se", "d_ring_nw", "d_ring_ne"]
+  },
+
   "items": [
     { "def": "key_copper", "room": "nursery", "at": [8.5, 0.02, 16] },
     { "def": "pipe",       "room": "kitchen", "at": [13, 0.02, 2] },

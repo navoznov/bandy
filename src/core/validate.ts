@@ -1,8 +1,9 @@
-import { DOOR } from '../config';
+import { DOOR, PLAYER, ROOM } from '../config';
 import type {
-  DoorDef, Effect, InteractionRule, ItemDef, ItemPlacement,
+  AntagonistDef, DoorDef, Effect, InteractionRule, ItemDef, ItemPlacement,
   Level, Rect, RoomDef, TriggerDef,
 } from './types';
+import { clampInside, INSET, roomPath } from './pathing';
 
 export function roomBounds(room: RoomDef) {
   const [x, z, w, d] = room.rect;
@@ -319,6 +320,59 @@ function parseTriggers(raw: unknown[], errors: string[]): TriggerDef[] {
   return triggers;
 }
 
+/**
+ * Блок `antagonist`: форма как у остальных полей уровня, разбирается до всех
+ * смысловых проверок. Поле необязательное — его отсутствие не ошибка формы,
+ * это обычный уровень без угрозы (спека §3).
+ */
+function parseAntagonist(raw: unknown, errors: string[]): AntagonistDef | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    errors.push('Поле "antagonist" должно быть объектом.');
+    return undefined;
+  }
+  const r = raw as Record<string, unknown>;
+  let valid = true;
+
+  let spawnRoom = '';
+  let spawnX = 0;
+  let spawnZ = 0;
+  const rawSpawn = r['spawn'];
+  if (typeof rawSpawn !== 'object' || rawSpawn === null || Array.isArray(rawSpawn)) {
+    errors.push('Антагонист: поле "spawn" должно быть объектом { room, x, z }.');
+    valid = false;
+  } else {
+    const s = rawSpawn as Record<string, unknown>;
+    if (!isNonEmptyString(s['room']) || !isFiniteNumber(s['x']) || !isFiniteNumber(s['z'])) {
+      errors.push('Антагонист: поле "spawn" должно содержать "room" (строка), "x" и "z" (числа).');
+      valid = false;
+    } else {
+      spawnRoom = s['room'];
+      spawnX = s['x'];
+      spawnZ = s['z'];
+    }
+  }
+
+  const route = r['route'];
+  if (!Array.isArray(route) || !route.every(isNonEmptyString)) {
+    errors.push('Антагонист: поле "route" должно быть массивом непустых строк.');
+    valid = false;
+  }
+
+  const keepOpen = r['keepOpen'];
+  if (!Array.isArray(keepOpen) || !keepOpen.every(isNonEmptyString)) {
+    errors.push('Антагонист: поле "keepOpen" должно быть массивом непустых строк.');
+    valid = false;
+  }
+
+  if (!valid) return undefined;
+  return {
+    spawn: { room: spawnRoom, x: spawnX, z: spawnZ },
+    route: route as string[],
+    keepOpen: keepOpen as string[],
+  };
+}
+
 // --- M9: уникальность идентификаторов сквозь все сущности. ----------------
 
 /**
@@ -502,6 +556,7 @@ export function validateLevel(
   const triggers = parseTriggers(asArray(lvl, 'triggers', errors), errors);
   const rawRules = asArray(lvl, 'interactions', errors) as Array<Record<string, unknown>>;
   const lockNames = parseLockNames(lvl['locks'], errors);
+  const antagonist = parseAntagonist(lvl['antagonist'], errors);
 
   // Дальше идут проверки смысла, а они опираются на разобранные сущности. Битая
   // форма означает, что часть сущностей отброшена, и каждая ссылка на них дала бы
@@ -671,6 +726,79 @@ export function validateLevel(
     }
   }
 
+  // Правило 8 общее, работает и без блока антагониста: игрок радиуса 0.3 в такую
+  // комнату тоже не помещается.
+  const minSide = 2 * (ROOM.wallThickness + PLAYER.radius);
+  for (const room of rooms) {
+    const [, , w, d] = room.rect;
+    if (w < minSide - EPS) {
+      errors.push(`Комната "${room.id}" уже ${minSide} м по оси X: в неё не помещается ни игрок, ни антагонист.`);
+    }
+    if (d < minSide - EPS) {
+      errors.push(`Комната "${room.id}" уже ${minSide} м по оси Z: в неё не помещается ни игрок, ни антагонист.`);
+    }
+  }
+
+  if (antagonist) {
+    const roomIds = new Set(rooms.map((r) => r.id));
+    for (const id of antagonist.route) {
+      if (!roomIds.has(id)) errors.push(`Антагонист: комната "${id}" из обхода не существует.`);
+    }
+    // Связность проверяется так, КАК ЕСЛИ БЫ все замки были сняты: замок временен,
+    // и комната за ним законно выпадает из обхода до тех пор, пока игрок его не
+    // откроет. Правило ловит комнату, в которую двери нет вовсе.
+    for (let i = 0; i < antagonist.route.length; i++) {
+      const from = antagonist.route[i]!;
+      const to = antagonist.route[(i + 1) % antagonist.route.length]!;
+      if (!roomIds.has(from) || !roomIds.has(to)) continue;
+      if (roomPath({ doors }, from, to, () => true) === null) {
+        errors.push(`Антагонист: из комнаты "${from}" нет пути в "${to}" — обход разорван.`);
+      }
+    }
+    for (const id of antagonist.keepOpen) {
+      const door = doors.find((d) => d.id === id);
+      if (!door) { errors.push(`Антагонист: двери "${id}" из "keepOpen" не существует.`); continue; }
+      if (door.lock !== undefined) {
+        errors.push(`Антагонист: дверь "${id}" в "keepOpen", но на ней висит замок — открыть её он не может.`);
+      }
+    }
+    const home = byId.get(antagonist.spawn.room);
+    if (!home) {
+      errors.push(`Антагонист: комнаты появления "${antagonist.spawn.room}" не существует.`);
+    } else if (!contains(home, antagonist.spawn.x, antagonist.spawn.z)) {
+      errors.push(`Антагонист: точка появления лежит вне комнаты "${home.id}".`);
+    } else {
+      // `contains()` принимает и границу, то есть угол комнаты проходил бы. Но
+      // тело радиуса 0.3 в этой точке уже внутри полосы стены, а разрешения
+      // коллизий у антагониста, в отличие от игрока, нет вовсе: он выберется
+      // оттуда только дойдя до первой путевой точки, скребя стену всю дорогу.
+      const safe = clampInside(home, { x: antagonist.spawn.x, z: antagonist.spawn.z });
+      if (Math.abs(safe.x - antagonist.spawn.x) > EPS || Math.abs(safe.z - antagonist.spawn.z) > EPS) {
+        errors.push(
+          `Антагонист: точка появления в комнате "${home.id}" ближе ${INSET} м к стене — он начнёт внутри стены.`,
+        );
+      }
+    }
+    if (spawn && antagonist.spawn.room === spawn.room) {
+      errors.push(`Антагонист появляется в комнате "${spawn.room}", где появляется игрок.`);
+    }
+    // Нулевая секунда: все замки на месте. Нужны минимум ДВЕ комнаты обхода, иначе
+    // он дойдёт до единственной и встанет.
+    const reach = computeReachability(antagonist.spawn.room, doors, [], interactions);
+    const live = new Set(antagonist.route.filter((id) => reach.rooms.has(id)));
+    if (antagonist.route.length === 0) {
+      // Ноль — это тоже «меньше двух». Прежняя оговорка `route.length > 0`
+      // выводила пустой список из-под правила целиком, и уровень проходил
+      // проверку молча: `planPatrol` при пустом обходе просто выходит, а автор
+      // карты видит «его почему-то нет в игре».
+      errors.push('Антагонист: обход пуст — патрулировать нечего.');
+    } else if (live.size === 1) {
+      errors.push('Антагонист: из точки появления достижима только одна комната обхода — патруля не будет.');
+    } else if (live.size === 0) {
+      errors.push('Антагонист: из точки появления не достижима ни одна комната обхода.');
+    }
+  }
+
   if (errors.length > 0) return { ok: false, errors };
 
   return {
@@ -678,7 +806,7 @@ export function validateLevel(
     level: {
       id: String(lvl['id'] ?? 'level'),
       spawn: spawn!,
-      rooms, doors, items, triggers, interactions, itemDefs, locks: lockNames,
+      rooms, doors, items, triggers, interactions, itemDefs, locks: lockNames, antagonist,
     },
   };
 }

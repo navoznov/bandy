@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import rawLevel from './level_03.json';
 import rawItems from './items.json';
 import { validateLevel } from '../core/validate';
+import { loadLevel } from './index';
 import type { ItemDef } from '../core/types';
 
 const defs = rawItems as unknown as Record<string, ItemDef>;
@@ -82,5 +83,26 @@ describe('level_03', () => {
         'Уровень непроходим: победа недостижима из точки появления.',
       );
     }
+  });
+
+  it('у уровня есть антагонист, и он появляется не там, где игрок', () => {
+    const level = load();
+    expect(level.antagonist).toBeDefined();
+    expect(level.antagonist?.spawn.room).not.toBe(level.spawn.room);
+    expect(level.antagonist?.route).toEqual(['kitchen', 'study', 'store', 'bedroom']);
+  });
+
+  it('на первых двух уровнях антагониста нет и не появится', () => {
+    for (const id of ['level_01', 'level_02']) {
+      const loaded = loadLevel(id);
+      expect(loaded.ok).toBe(true);
+      if (loaded.ok) expect(loaded.level.antagonist).toBeUndefined();
+    }
+  });
+
+  it('ни одна дверь кольца не закрывается за ним', () => {
+    const level = load();
+    const ring = level.doors.filter((d) => d.id.startsWith('d_ring_')).map((d) => d.id);
+    expect([...(level.antagonist?.keepOpen ?? [])].sort()).toEqual([...ring].sort());
   });
 });

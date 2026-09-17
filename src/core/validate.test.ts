@@ -116,6 +116,187 @@ describe('validateLevel', () => {
   });
 });
 
+describe('блок antagonist', () => {
+  function withAntagonist(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    const lvl = baseLevel() as unknown as Record<string, unknown>;
+    lvl['antagonist'] = {
+      spawn: { room: 'b', x: 12, z: 3 },
+      route: ['a', 'b'],
+      keepOpen: [],
+      ...extra,
+    };
+    return lvl;
+  }
+
+  /** Тот же уровень, но дверь заперта: без замка проверять про замки нечего. */
+  function withLockedDoor(lvl: Record<string, unknown>): Record<string, unknown> {
+    (lvl['doors'] as Array<Record<string, unknown>>)[0]!['lock'] = 'lock_ab';
+    lvl['locks'] = { lock_ab: 'Пробный замок' };
+    lvl['interactions'] = [
+      { use: 'key_brass', on: 'lock_ab',
+        effects: [{ destroy: 'lock_ab' }, { consume: 'key_brass' }] },
+    ];
+    return lvl;
+  }
+
+  it('уровень без блока по-прежнему валиден', () => {
+    const result = validateLevel(baseLevel(), itemDefs);
+    expect(result.ok ? [] : result.errors).toEqual([]);
+  });
+
+  it('уровень с корректным блоком валиден', () => {
+    const result = validateLevel(withAntagonist(), itemDefs);
+    expect(result.ok ? [] : result.errors).toEqual([]);
+  });
+
+  it('несуществующая комната в обходе названа по идентификатору', () => {
+    const result = validateLevel(withAntagonist({ route: ['a', 'nowhere'] }), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: комната "nowhere" из обхода не существует.');
+    }
+  });
+
+  it('дверь из keepOpen с замком — противоречие', () => {
+    const result = validateLevel(
+      withLockedDoor(withAntagonist({ keepOpen: ['d_ab'] })), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain(
+        'Антагонист: дверь "d_ab" в "keepOpen", но на ней висит замок — открыть её он не может.',
+      );
+    }
+  });
+
+  it('он не может появляться в комнате игрока', () => {
+    const result = validateLevel(
+      withAntagonist({ spawn: { room: 'a', x: 2, z: 3 } }), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист появляется в комнате "a", где появляется игрок.');
+    }
+  });
+
+  it('одной достижимой комнаты обхода мало — он дойдёт до неё и встанет', () => {
+    // Дверь заперта, антагонист стоит в "b" и замки не открывает, значит из обхода
+    // ему доступна только "b". Прочие ошибки в списке допустимы, важна эта.
+    const result = validateLevel(withLockedDoor(withAntagonist()), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain(
+        'Антагонист: из точки появления достижима только одна комната обхода — патруля не будет.',
+      );
+    }
+  });
+
+  it('комната уже метра не имеет безопасной точки для тела радиуса 0.3', () => {
+    const lvl = baseLevel() as unknown as Record<string, unknown>;
+    (lvl['rooms'] as Array<Record<string, unknown>>).push(
+      { id: 'slot', rect: [0, 10, 0.8, 4], color: '#888888', light: 1 });
+    const result = validateLevel(lvl, itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain(
+        'Комната "slot" уже 1 м по оси X: в неё не помещается ни игрок, ни антагонист.',
+      );
+    }
+  });
+
+  it('комнаты обхода без двери между ними — разорванный обход', () => {
+    const lvl = withAntagonist({ route: ['a', 'c'] });
+    // Комната без единой двери: в обход её включили, а дойти до неё нельзя.
+    (lvl['rooms'] as Array<Record<string, unknown>>).push(
+      { id: 'c', rect: [0, 8, 6, 4], color: '#888888', light: 1 });
+    const result = validateLevel(lvl, itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: из комнаты "a" нет пути в "c" — обход разорван.');
+    }
+  });
+
+  it('несуществующая дверь в keepOpen названа по идентификатору', () => {
+    const result = validateLevel(withAntagonist({ keepOpen: ['d_nope'] }), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: двери "d_nope" из "keepOpen" не существует.');
+    }
+  });
+
+  it('несуществующая комната появления', () => {
+    const result = validateLevel(
+      withAntagonist({ spawn: { room: 'nowhere', x: 1, z: 1 } }), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: комнаты появления "nowhere" не существует.');
+    }
+  });
+
+  it('точка появления вне контура своей комнаты', () => {
+    const result = validateLevel(
+      withAntagonist({ spawn: { room: 'b', x: 100, z: 100 } }), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: точка появления лежит вне комнаты "b".');
+    }
+  });
+
+  it('ни одной достижимой комнаты обхода — тоже ошибка, и другая', () => {
+    // Обход из одной комнаты "a", антагонист заперт в "b": достижимых нуль.
+    const result = validateLevel(
+      withLockedDoor(withAntagonist({ route: ['a'] })), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: из точки появления не достижима ни одна комната обхода.');
+    }
+  });
+
+  it('пустой обход — не «нет замечаний», а молчаливо неподвижный антагонист', () => {
+    // Правило 7 требует «не менее двух различных комнат обхода». Ноль — это
+    // меньше двух, но прежняя редакция исключала пустой список отдельной
+    // оговоркой, и уровень проходил проверку целиком: антагонист стоял столбом,
+    // а автор карты видел «его почему-то нет в игре» — ровно тот молчаливый
+    // отказ, против которого правило и писалось.
+    const result = validateLevel(withAntagonist({ route: [] }), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('Антагонист: обход пуст — патрулировать нечего.');
+    }
+  });
+
+  it('точка появления вплотную к стене — он начинает игру внутри неё', () => {
+    // `contains()` границу принимает, и угол комнаты проверку проходил. Но у
+    // антагониста, в отличие от игрока, разрешения коллизий нет вовсе: он
+    // выберется из стены, только дойдя до первой путевой точки, и всю дорогу
+    // будет скрести по ней плечом.
+    const result = validateLevel(withAntagonist({ spawn: { room: 'b', x: 8, z: 2 } }), itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain(
+        'Антагонист: точка появления в комнате "b" ближе 0.5 м к стене — он начнёт внутри стены.',
+      );
+    }
+  });
+
+  it('антагонист не подбирает ключи: достижимость считается со всеми замками на месте', () => {
+    // Ключ лежит в комнате появления антагониста и снимает замок с двери,
+    // ведущей ко второй комнате обхода. Если правило 7 когда-нибудь начнёт
+    // считать достижимость с реальными предметами вместо пустого списка,
+    // антагонист «подберёт» этот ключ, обход станет достижим целиком —
+    // и ошибка исчезнет. Тест сторожит именно это.
+    const lvl = withLockedDoor(withAntagonist());
+    (lvl['items'] as Array<Record<string, unknown>>)[0]!['room'] = 'b';
+    (lvl['items'] as Array<Record<string, unknown>>)[0]!['at'] = [12, 0.02, 3];
+
+    const result = validateLevel(lvl, itemDefs);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain(
+        'Антагонист: из точки появления достижима только одна комната обхода — патруля не будет.',
+      );
+    }
+  });
+});
+
 describe('doorOnVerticalWall', () => {
   const hall = { id: 'hall', rect: [0, 0, 8, 6], color: '#888', light: 1 } as RoomDef;
 
