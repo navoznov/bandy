@@ -3,7 +3,7 @@ import type {
   AntagonistDef, DoorDef, Effect, InteractionRule, ItemDef, ItemPlacement,
   Level, Rect, RoomDef, TriggerDef,
 } from './types';
-import { roomPath } from './pathing';
+import { clampInside, INSET, roomPath } from './pathing';
 
 export function roomBounds(room: RoomDef) {
   const [x, z, w, d] = room.rect;
@@ -767,6 +767,17 @@ export function validateLevel(
       errors.push(`Антагонист: комнаты появления "${antagonist.spawn.room}" не существует.`);
     } else if (!contains(home, antagonist.spawn.x, antagonist.spawn.z)) {
       errors.push(`Антагонист: точка появления лежит вне комнаты "${home.id}".`);
+    } else {
+      // `contains()` принимает и границу, то есть угол комнаты проходил бы. Но
+      // тело радиуса 0.3 в этой точке уже внутри полосы стены, а разрешения
+      // коллизий у антагониста, в отличие от игрока, нет вовсе: он выберется
+      // оттуда только дойдя до первой путевой точки, скребя стену всю дорогу.
+      const safe = clampInside(home, { x: antagonist.spawn.x, z: antagonist.spawn.z });
+      if (Math.abs(safe.x - antagonist.spawn.x) > EPS || Math.abs(safe.z - antagonist.spawn.z) > EPS) {
+        errors.push(
+          `Антагонист: точка появления в комнате "${home.id}" ближе ${INSET} м к стене — он начнёт внутри стены.`,
+        );
+      }
     }
     if (spawn && antagonist.spawn.room === spawn.room) {
       errors.push(`Антагонист появляется в комнате "${spawn.room}", где появляется игрок.`);
@@ -775,9 +786,15 @@ export function validateLevel(
     // он дойдёт до единственной и встанет.
     const reach = computeReachability(antagonist.spawn.room, doors, [], interactions);
     const live = new Set(antagonist.route.filter((id) => reach.rooms.has(id)));
-    if (live.size === 1) {
+    if (antagonist.route.length === 0) {
+      // Ноль — это тоже «меньше двух». Прежняя оговорка `route.length > 0`
+      // выводила пустой список из-под правила целиком, и уровень проходил
+      // проверку молча: `planPatrol` при пустом обходе просто выходит, а автор
+      // карты видит «его почему-то нет в игре».
+      errors.push('Антагонист: обход пуст — патрулировать нечего.');
+    } else if (live.size === 1) {
       errors.push('Антагонист: из точки появления достижима только одна комната обхода — патруля не будет.');
-    } else if (live.size === 0 && antagonist.route.length > 0) {
+    } else if (live.size === 0) {
       errors.push('Антагонист: из точки появления не достижима ни одна комната обхода.');
     }
   }
