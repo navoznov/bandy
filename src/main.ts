@@ -17,6 +17,8 @@ import { createDread } from './ui/dread';
 import { createInventoryUi } from './ui/inventory';
 import { createStartOverlay } from './ui/start';
 import { hasWebGl, showFatal } from './ui/fatal';
+import { createFpsMeter } from './ui/fps';
+import { applyDebug, parseDebug } from './debug';
 
 /**
  * Останавливает игровой цикл. Заполняется после создания рендерера: ловушки ниже
@@ -56,14 +58,15 @@ if (!loaded.ok) {
   showFatal('Уровень не прошёл валидацию', loaded.errors);
   throw new Error('Уровень не прошёл валидацию');
 }
-const level = loaded.level;
+const debug = parseDebug(location.search);
+const level = applyDebug(loaded.level, debug);
 
 const world = new World(level);
 const allColliders = buildColliders(level);
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: debug.antialias });
 renderer.shadowMap.enabled = false;
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(debug.pixelRatio ?? Math.min(window.devicePixelRatio, 2));
 // Без тонмаппинга всё ярче единицы жёстко срезается в чистый белый, и любой
 // пересвет читается плоским диском вместо мягкого блика.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -105,6 +108,7 @@ const hand = createHand();
 const inventoryUi = createInventoryUi(world);
 const dread = createDread();
 const steps = createSteps();
+const fps = debug.fps ? createFpsMeter() : null;
 
 // AudioContext без жеста пользователя не создаётся. Годится любое первое
 // нажатие: на десктопе им же берут захват курсора, на телефоне им же снимают
@@ -234,7 +238,8 @@ renderer.setAnimationLoop((now) => {
   try {
     // Клампим шаг времени: после сворачивания вкладки он приходит в секундах
     // и телепортировал бы игрока сквозь стены.
-    const dt = Math.min((now - previous) / 1000, MAX_DELTA_SECONDS);
+    const frameSeconds = (now - previous) / 1000;
+    const dt = Math.min(frameSeconds, MAX_DELTA_SECONDS);
     previous = now;
 
     const state = input.state;
@@ -378,6 +383,10 @@ renderer.setAnimationLoop((now) => {
 
     renderer.autoClear = true;
     renderer.render(scene, camera);
+    // Счётчик three сбрасывается на каждом render, а рука рисуется вторым
+    // проходом: читать надо здесь, между ними. Кадр — сырой, без клампа dt,
+    // иначе счётчик не опустился бы ниже 20 fps.
+    fps?.update(frameSeconds, renderer.info.render.calls);
     renderer.autoClear = false;
     renderer.clearDepth();
     renderer.render(hand.scene, hand.camera);
