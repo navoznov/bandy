@@ -59,3 +59,46 @@ for (const levelId of ['level_01', 'level_02', 'level_03']) {
     }
   });
 }
+
+/**
+ * Ручка стоит у свободного торца полотна, напротив петли, — там, где за дверь
+ * берутся. Перепутать сторону легко: у дверей на вертикальной стене створка
+ * повёрнута на -π/2, и ошибка в локальной оси увела бы ручку к петле только у
+ * них. Поэтому проверяется каждая дверь каждого уровня, в мировых координатах.
+ */
+for (const levelId of ['level_01', 'level_02', 'level_03']) {
+  describe(`ручки в ${levelId}`, () => {
+    const loaded = loadLevel(levelId);
+    if (!loaded.ok) throw new Error(loaded.errors.join('\n'));
+    const level = loaded.level;
+    const doors = buildDoors(level, new World(level));
+    doors.group.updateMatrixWorld(true);
+
+    for (const door of level.doors) {
+      it(`${door.id}: ручка у торца напротив петли и с обеих сторон`, () => {
+        const handle = doors.targets.find(
+          (t) => t.userData['targetId'] === door.id && t.name === 'handle',
+        );
+        expect(handle, `у двери ${door.id} нет ручки`).toBeDefined();
+        if (!handle?.parent) return;
+
+        const box = new THREE.Box3().setFromObject(handle);
+        const center = box.getCenter(new THREE.Vector3());
+        const hinge = handle.parent.getWorldPosition(new THREE.Vector3());
+        const fromHinge = Math.hypot(center.x - hinge.x, center.z - hinge.z);
+        // Ширина проёма 0.9: ручка обязана стоять в дальней от петли трети.
+        expect(fromHinge, `ручка ${door.id} в ${fromHinge.toFixed(3)} м от петли`)
+          .toBeGreaterThan(0.6);
+
+        for (const roomId of door.between) {
+          const room = level.rooms.find((r) => r.id === roomId);
+          if (!room) throw new Error(`в уровне нет комнаты ${roomId}`);
+          const b = roomBounds(room.rect);
+          const overlaps = box.max.x > b.x0 && box.min.x < b.x1
+            && box.max.z > b.z0 && box.min.z < b.z1;
+          expect(overlaps, `ручка ${door.id} не видна из комнаты ${roomId}`).toBe(true);
+        }
+      });
+    }
+  });
+}

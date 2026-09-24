@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { DOOR } from '../config';
 import { doorOnVerticalWall } from '../core/validate';
 import type { Vec2 } from '../core/collision';
@@ -29,6 +30,38 @@ const LOCK_GEOMETRY = new THREE.BoxGeometry(0.14, 0.2, 0.16);
  * 3 см врезается в остаток стены рядом с проёмом (M4 финального ревью).
  */
 const HINGE_SHIFT = LEAF_THICKNESS / 2;
+
+const HANDLE_MATERIAL = new THREE.MeshStandardMaterial({
+  color: 0xc9c9c9, roughness: 0.3, metalness: 0.35,
+});
+
+/**
+ * Нажимная ручка с обеих сторон полотна: розетка, шейка и рычаг, который
+ * смотрит от торца к петле, как у настоящей двери. Всё слито в одну геометрию —
+ * одна ручка на дверь стоит один draw call, а их на уровне до двенадцати.
+ *
+ * Собирается вокруг начала координат; вторая сторона — поворот на π вокруг X,
+ * а не отражение по Z: отражение вывернуло бы грани наизнанку.
+ */
+function buildHandleGeometry(): THREE.BufferGeometry {
+  const face = LEAF_THICKNESS / 2;
+  const rose = new THREE.CylinderGeometry(0.028, 0.028, 0.012, 20)
+    .rotateX(Math.PI / 2)
+    .translate(0, 0, face + 0.006);
+  const neck = new THREE.CylinderGeometry(0.009, 0.009, 0.05, 12)
+    .rotateX(Math.PI / 2)
+    .translate(0, 0, face + 0.025);
+  const lever = new THREE.BoxGeometry(0.13, 0.018, 0.022)
+    .translate(-0.055, 0, face + 0.05);
+  const side = mergeGeometries([rose, neck, lever]);
+  const merged = mergeGeometries([side, side.clone().rotateX(Math.PI)]);
+  for (const g of [rose, neck, lever, side]) g.dispose();
+  return merged;
+}
+const HANDLE_GEOMETRY = buildHandleGeometry();
+/** Розетка в 7 см от свободного торца полотна и ниже замка (он на 1.05–1.25). */
+const HANDLE_X = DOOR.width - HINGE_SHIFT - 0.07;
+const HANDLE_Y = 0.95;
 
 interface Leaf {
   pivot: THREE.Group;
@@ -91,6 +124,15 @@ export function buildDoors(level: Level, world: World): Doors {
     leaf.userData['targetId'] = door.id;
     pivot.add(leaf);
     targets.push(leaf);
+
+    // Ручка у торца напротив петли и ведёт себя как полотно: целится в неё игрок
+    // тем же движением, каким потянулся бы к настоящей двери.
+    const handle = new THREE.Mesh(HANDLE_GEOMETRY, HANDLE_MATERIAL);
+    handle.name = 'handle';
+    handle.position.set(HANDLE_X, HANDLE_Y, 0);
+    handle.userData['targetId'] = door.id;
+    pivot.add(handle);
+    targets.push(handle);
 
     group.add(pivot);
     leaves.set(door.id, {
