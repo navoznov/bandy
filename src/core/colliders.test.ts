@@ -44,6 +44,14 @@ describe('buildColliders', () => {
     expect(boxes.filter((b) => b.doorId === 'd_ab')).toHaveLength(1);
   });
 
+  it('помечает каждую стену комнатой, внутри которой она стоит', () => {
+    const walls = buildColliders(twoRooms()).filter((b) => b.doorId === undefined);
+    for (const w of walls) {
+      const inA = w.x1 <= 8;
+      expect(w.roomId).toBe(inA ? 'a' : 'b');
+    }
+  });
+
   it('вырезает проём в стене, оставляя дверь единственной преградой', () => {
     const boxes = buildColliders(twoRooms());
     const withoutDoor = boxes.filter((b) => b.doorId === undefined);

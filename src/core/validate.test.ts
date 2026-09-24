@@ -96,6 +96,24 @@ describe('validateLevel', () => {
     expect(errors.join(' ')).toContain('win');
   });
 
+  it('комната без поля style валидна', () => {
+    const result = validateLevel(baseLevel(), itemDefs);
+    expect(result.ok && result.level.rooms[0]!.style).toBe(undefined);
+  });
+
+  it('известный стиль комнаты доходит до уровня', () => {
+    const lvl = baseLevel();
+    (lvl.rooms[0] as Record<string, unknown>)['style'] = 'nursery';
+    const result = validateLevel(lvl, itemDefs);
+    expect(result.ok && result.level.rooms[0]!.style).toBe('nursery');
+  });
+
+  it('ловит неизвестный стиль комнаты и называет комнату', () => {
+    const errors = errorsFor((l) => { (l.rooms[1] as Record<string, unknown>)['style'] = 'nursry'; });
+    expect(errors.join(' ')).toContain('"b"');
+    expect(errors.join(' ')).toContain('nursry');
+  });
+
   it('разбирает сокращённую запись эффектов в размеченное объединение', () => {
     const lvl = baseLevel();
     (lvl.doors[0]! as Record<string, unknown>).lock = 'lock_x';
