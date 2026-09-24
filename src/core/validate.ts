@@ -1,8 +1,9 @@
 import { DOOR, PLAYER, ROOM } from '../config';
 import type {
   AntagonistDef, DoorDef, Effect, InteractionRule, ItemDef, ItemPlacement,
-  Level, Rect, RoomDef, TriggerDef,
+  Level, Rect, RoomDef, RoomStyle, TriggerDef,
 } from './types';
+import { ROOM_STYLES } from './types';
 import { clampInside, INSET, roomPath } from './pathing';
 
 export function roomBounds(room: RoomDef) {
@@ -177,12 +178,19 @@ function parseRooms(raw: unknown[], errors: string[]): RoomDef[] {
       valid = false;
     }
 
+    const style = r['style'];
+    if (style !== undefined && !(ROOM_STYLES as readonly unknown[]).includes(style)) {
+      errors.push(`Комната ${label}: неизвестный стиль ${JSON.stringify(style)}, допустимы: ${ROOM_STYLES.join(', ')}.`);
+      valid = false;
+    }
+
     if (valid) {
       rooms.push({
         id: r['id'] as string,
         rect: rect as Rect,
         color: r['color'] as string,
         light: r['light'] as number,
+        style: style as RoomStyle | undefined,
       });
     }
   });

@@ -7,12 +7,25 @@ export interface ItemDef {
   holdable: boolean;
 }
 
+/**
+ * Тема комнаты. Задаёт оформление всех её поверхностей разом; что именно
+ * нарисовать для каждой темы, решает рендер (`render/wallpaper.ts`).
+ */
+export const ROOM_STYLES = [
+  'living', 'bedroom', 'nursery', 'hall', 'study',
+  'kitchen', 'bath', 'laundry', 'storage', 'plain',
+] as const;
+
+export type RoomStyle = typeof ROOM_STYLES[number];
+
 export interface RoomDef {
   id: string;
   rect: Rect;
   color: string;
   /** Яркость освещения комнаты, 0..1. Позже станет множителем для полумрака. */
   light: number;
+  /** Без темы комната остаётся с нейтральными серыми стенами. */
+  style?: RoomStyle;
 }
 
 export interface DoorDef {

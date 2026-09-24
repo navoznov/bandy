@@ -9,6 +9,8 @@ export interface Aabb {
   z1: number;
   /** Задан только у коллайдеров дверных створок. */
   doorId?: string;
+  /** Задан только у стен: комната, внутрь которой стена построена. */
+  roomId?: string;
 }
 
 type Segment = { from: number; to: number };
@@ -58,16 +60,16 @@ export function buildColliders(level: Level): Aabb[] {
     // z-fighting там, где комнаты разной длины делят стену.
     const t = ROOM.wallThickness;
     for (const seg of subtract({ from: b.z0, to: b.z1 }, holesOnWest)) {
-      boxes.push({ x0: b.x0, x1: b.x0 + t, z0: seg.from, z1: seg.to });
+      boxes.push({ x0: b.x0, x1: b.x0 + t, z0: seg.from, z1: seg.to, roomId: room.id });
     }
     for (const seg of subtract({ from: b.z0, to: b.z1 }, holesOnEast)) {
-      boxes.push({ x0: b.x1 - t, x1: b.x1, z0: seg.from, z1: seg.to });
+      boxes.push({ x0: b.x1 - t, x1: b.x1, z0: seg.from, z1: seg.to, roomId: room.id });
     }
     for (const seg of subtract({ from: b.x0, to: b.x1 }, holesOnNorth)) {
-      boxes.push({ x0: seg.from, x1: seg.to, z0: b.z0, z1: b.z0 + t });
+      boxes.push({ x0: seg.from, x1: seg.to, z0: b.z0, z1: b.z0 + t, roomId: room.id });
     }
     for (const seg of subtract({ from: b.x0, to: b.x1 }, holesOnSouth)) {
-      boxes.push({ x0: seg.from, x1: seg.to, z0: b.z1 - t, z1: b.z1 });
+      boxes.push({ x0: seg.from, x1: seg.to, z0: b.z1 - t, z1: b.z1, roomId: room.id });
     }
   }
 
