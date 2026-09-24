@@ -3,19 +3,19 @@
   "spawn": { "room": "stair", "x": 8, "z": 1.5, "yaw": 3.1416 },
 
   "rooms": [
-    { "id": "stair",     "rect": [6, 0, 4, 4],    "color": "#6a7078", "light": 0.6 },
-    { "id": "kitchen",   "rect": [10, 0, 6, 4],   "color": "#8a8270", "light": 0.8 },
+    { "id": "stair",     "rect": [6, 0, 4, 4],    "color": "#6a7078", "light": 0.6, "style": "plain" },
+    { "id": "kitchen",   "rect": [10, 0, 6, 4],   "color": "#8a8270", "light": 0.8, "style": "kitchen" },
 
-    { "id": "hall_s",    "rect": [6, 4, 10, 2],   "color": "#6f6a66", "light": 0.5 },
-    { "id": "hall_w",    "rect": [6, 6, 2, 6],    "color": "#6f6a66", "light": 0.5 },
-    { "id": "hall_e",    "rect": [14, 6, 2, 6],   "color": "#6f6a66", "light": 0.5 },
-    { "id": "hall_n",    "rect": [6, 12, 10, 2],  "color": "#6f6a66", "light": 0.5 },
+    { "id": "hall_s",    "rect": [6, 4, 10, 2],   "color": "#6f6a66", "light": 0.5, "style": "hall" },
+    { "id": "hall_w",    "rect": [6, 6, 2, 6],    "color": "#6f6a66", "light": 0.5, "style": "hall" },
+    { "id": "hall_e",    "rect": [14, 6, 2, 6],   "color": "#6f6a66", "light": 0.5, "style": "hall" },
+    { "id": "hall_n",    "rect": [6, 12, 10, 2],  "color": "#6f6a66", "light": 0.5, "style": "hall" },
 
-    { "id": "bedroom",   "rect": [0, 4, 6, 10],   "color": "#74697a", "light": 0.55 },
-    { "id": "study",     "rect": [16, 4, 6, 5],   "color": "#6b6656", "light": 0.65 },
-    { "id": "bath",      "rect": [16, 9, 6, 5],   "color": "#6d7c82", "light": 0.8 },
-    { "id": "nursery",   "rect": [6, 14, 5, 4],   "color": "#8c7a68", "light": 0.75 },
-    { "id": "store",     "rect": [11, 14, 5, 4],  "color": "#5a554f", "light": 0.4 },
+    { "id": "bedroom",   "rect": [0, 4, 6, 10],   "color": "#74697a", "light": 0.55, "style": "bedroom" },
+    { "id": "study",     "rect": [16, 4, 6, 5],   "color": "#6b6656", "light": 0.65, "style": "study" },
+    { "id": "bath",      "rect": [16, 9, 6, 5],   "color": "#6d7c82", "light": 0.8, "style": "bath" },
+    { "id": "nursery",   "rect": [6, 14, 5, 4],   "color": "#8c7a68", "light": 0.75, "style": "nursery" },
+    { "id": "store",     "rect": [11, 14, 5, 4],  "color": "#5a554f", "light": 0.4, "style": "storage" },
 
     { "id": "exit_hall", "rect": [11, 18, 3, 12], "color": "#5a5a60", "light": 0.4 }
   ],

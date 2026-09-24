@@ -3,9 +3,9 @@
   "spawn": { "room": "hall", "x": 2, "z": 3, "yaw": 0 },
 
   "rooms": [
-    { "id": "hall",       "rect": [0, 0, 8, 6],   "color": "#8b8b9f", "light": 0.9 },
-    { "id": "corridor_a", "rect": [8, 2, 6, 2],   "color": "#6f746f", "light": 0.6 },
-    { "id": "office",     "rect": [14, 0, 6, 6],  "color": "#8d8278", "light": 0.9 },
+    { "id": "hall",       "rect": [0, 0, 8, 6],   "color": "#8b8b9f", "light": 0.9, "style": "living" },
+    { "id": "corridor_a", "rect": [8, 2, 6, 2],   "color": "#6f746f", "light": 0.6, "style": "hall" },
+    { "id": "office",     "rect": [14, 0, 6, 6],  "color": "#8d8278", "light": 0.9, "style": "study" },
     { "id": "exit_hall",  "rect": [14, 6, 3, 20], "color": "#5a5a60", "light": 0.4 }
   ],
 
