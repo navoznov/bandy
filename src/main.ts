@@ -5,6 +5,7 @@ import { resolveMove } from './core/collision';
 import { canSprint, stepStamina } from './core/stamina';
 import { moveDelta } from './core/movement';
 import { Antagonist } from './core/antagonist';
+import { exitGlow } from './core/glow';
 import { World } from './core/world';
 import { loadLevel, nextLevelId } from './levels';
 import { createInput, isCoarsePointer } from './input';
@@ -373,12 +374,7 @@ renderer.setAnimationLoop((now) => {
 
     // Тот же белый оверлей служит и засветкой на подходе, и экраном победы.
     if (winTrigger) {
-      const [tx, tz, tw, td] = winTrigger.rect;
-      const cx = tx + tw / 2;
-      const cz = tz + td / 2;
-      const distance = Math.hypot(player.x - cx, player.z - cz);
-      const glow = Math.max(0, Math.min(1, (10 - distance) / 9));
-      flashEl.style.opacity = String(world.won ? 1 : glow * 0.9);
+      flashEl.style.opacity = String(world.won ? 1 : exitGlow(level, player));
     }
 
     renderer.autoClear = true;
