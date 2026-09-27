@@ -103,7 +103,9 @@
       .touch-btn { position: fixed; pointer-events: auto; border: none;
                    border-radius: 12px; background: rgba(255,255,255,0.18);
                    color: #fff; font: 600 16px system-ui, sans-serif;
-                   min-width: 96px; min-height: 64px; }
+                   min-width: 96px; min-height: 64px;
+                   /* Иначе второй палец на кнопке браузер может принять за щипок. */
+                   touch-action: none; }
       .touch-btn[hidden] { display: none; }
       .touch-btn:disabled { opacity: 0.35; }
       #btn-use { right: calc(20px + env(safe-area-inset-right));
