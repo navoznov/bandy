@@ -107,12 +107,22 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputSource {
   // даже когда само отпускание до обработчика не доехало.
   canvas.addEventListener('lostpointercapture', release);
 
-  useButton.addEventListener('click', () => { state.interact = true; });
-  bagButton.addEventListener('click', () => { state.toggleInventory = true; });
+  // `pointerdown`, а не `click`: Chrome на Android синтезирует `click` только из
+  // одиночного тапа, а второй палец при лежащем на стике первом он считает
+  // многопальцевым жестом и тап отменяет — кнопки на ходу молчали. Проверка
+  // `disabled` явная: погашенная кнопка `click` не получала, а `pointerdown`
+  // получать может.
+  const onPress = (button: HTMLButtonElement, action: () => void): void => {
+    button.addEventListener('pointerdown', () => {
+      if (!button.disabled) action();
+    });
+  };
+  onPress(useButton, () => { state.interact = true; });
+  onPress(bagButton, () => { state.toggleInventory = true; });
 
   // Тумблер, а не удержание: правая половина экрана — свайп обзора, и удержание
   // парковало бы большой палец, оставляя игрока без возможности повернуть на бегу.
-  sprintButton.addEventListener('click', () => {
+  onPress(sprintButton, () => {
     state.sprint = !state.sprint;
     sprintButton.classList.toggle('on', state.sprint);
   });
