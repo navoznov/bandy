@@ -7,6 +7,7 @@ import { makeGridTexture, roomMaterials } from './materials';
 import { buildDoors, type Doors } from './doors';
 import { buildItems } from './items';
 import { buildExitGlow, buildSigns } from './sign';
+import { floorMaterial } from './wallpaper';
 import { buildWalls } from './walls';
 
 export interface SceneBuild {
@@ -40,7 +41,17 @@ export function buildScene(level: Level, world: World): SceneBuild {
 
     const materials = roomMaterials(room.color, grid, width, depth);
 
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), materials.floor);
+    // У комнаты с темой пол узорный, и UV у него в мировых метрах, как у стен:
+    // тогда материал один на тему, а метр узора — метр на любом полу.
+    const floorGeometry = new THREE.PlaneGeometry(width, depth);
+    if (room.style !== undefined) {
+      const pos = floorGeometry.getAttribute('position');
+      const uv = floorGeometry.getAttribute('uv');
+      // После поворота на -90° вокруг x локальная y плоскости смотрит в -z мира.
+      for (let i = 0; i < pos.count; i++) uv.setXY(i, cx + pos.getX(i), cz - pos.getY(i));
+    }
+    const floorMat = room.style === undefined ? materials.floor : floorMaterial(room.style);
+    const floor = new THREE.Mesh(floorGeometry, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(cx, 0, cz);
     scene.add(floor);
