@@ -30,6 +30,7 @@
 - [Деплой на GitHub Pages](#деплой-на-github-pages)
 - [Параметры запуска](#параметры-запуска)
 - [Документы](#документы)
+- [Лицензия](#лицензия)
 
 ## Возможности
 
@@ -240,3 +241,7 @@ https://navoznov.github.io/bandy/?antagonist=off&fps#level_03
 - Дизайн игры: [`docs/superpowers/specs/2026-08-24-bandy-design.md`](docs/superpowers/specs/2026-08-24-bandy-design.md)
 - План реализации: [`docs/superpowers/plans/2026-08-24-bandy-vertical-slice.md`](docs/superpowers/plans/2026-08-24-bandy-vertical-slice.md)
 - Дизайн антагониста: [`docs/superpowers/specs/2026-08-27-bandy-antagonist-design.md`](docs/superpowers/specs/2026-08-27-bandy-antagonist-design.md)
+
+## Лицензия
+
+[MIT](LICENSE).
