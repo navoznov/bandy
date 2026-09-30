@@ -162,6 +162,39 @@
         .for-desktop { display: none; }
         .for-touch { display: block; }
       }
+      /* `.for-touch { display: block }` в медиазапросе перебил бы атрибут hidden:
+         авторский стиль сильнее встроенного [hidden]. Id поднимает специфичность. */
+      #start ul[hidden] { display: none; }
+      /* Ночной режим (уровень 4). Выше монитора (6): часы, энергия и кнопка
+         монитора видны и поверх камер. Ниже старта (8), финалов (21) и «поверни
+         телефон» (30). */
+      #night { position: fixed; inset: 0; z-index: 7; pointer-events: none;
+               color: #f2f2f2; font: 600 18px/1.3 system-ui, sans-serif; }
+      #night[hidden] { display: none; }
+      #night-clock { position: absolute; font-size: 26px;
+                     left: calc(20px + env(safe-area-inset-left));
+                     top: calc(16px + env(safe-area-inset-top)); }
+      #night-power { position: absolute;
+                     right: calc(20px + env(safe-area-inset-right));
+                     top: calc(16px + env(safe-area-inset-top)); }
+      .night-btn { position: fixed; pointer-events: auto; border: none;
+                   border-radius: 12px; background: rgba(255,255,255,0.18);
+                   color: #fff; font: 600 16px system-ui, sans-serif;
+                   min-width: 96px; min-height: 64px; touch-action: none;
+                   user-select: none; -webkit-user-select: none; }
+      .night-btn.on { background: rgba(255,212,121,0.55); color: #1a1a1a; }
+      #nb-door-left, #nb-light-left { left: calc(20px + env(safe-area-inset-left)); }
+      #nb-door-right, #nb-light-right { right: calc(20px + env(safe-area-inset-right)); }
+      /* 64 + 12 зазора: промах пальцем между дверью и светом — это открытая дверь. */
+      #nb-door-left, #nb-door-right { top: calc(50% - 76px); }
+      #nb-light-left, #nb-light-right { top: calc(50% + 12px); }
+      #nb-vent { left: 50%; transform: translateX(-50%);
+                 top: calc(16px + env(safe-area-inset-top)); }
+      #nb-monitor { left: 50%; transform: translateX(-50%); min-width: 220px;
+                    bottom: calc(16px + env(safe-area-inset-bottom)); }
+      /* Пока поднят монитор, двери и свет не нажимаются (правило ядра) — и не видны.
+         Без энергии не нажимается ничего. */
+      #night.monitor .side, #night.dead .night-btn { visibility: hidden; }
       #fatal { position: fixed; inset: 0; overflow: auto; z-index: 40;
                background: #1a1013; color: #ffd7d7; padding: 32px;
                font: 15px/1.6 ui-monospace, monospace; }
@@ -187,7 +220,7 @@
     <div id="start">
       <h1 id="start-title">BANDY</h1>
       <p id="start-action">Нажми, чтобы начать</p>
-      <ul class="for-desktop">
+      <ul class="for-desktop" id="start-explore-desktop">
         <li>WASD — идти</li>
         <li>Мышь — осмотреться</li>
         <li>E — действие</li>
@@ -195,12 +228,27 @@
         <li>Shift — бежать</li>
         <li>Escape — пауза</li>
       </ul>
-      <ul class="for-touch">
+      <ul class="for-touch" id="start-explore-touch">
         <li>Стик слева — идти</li>
         <li>Свайп справа — осмотреться</li>
         <li>Кнопка «Действие» — действие</li>
         <li>Кнопка «Рюкзак» — инвентарь</li>
         <li>Кнопка «Бег» — бежать</li>
+      </ul>
+      <ul class="for-desktop" id="start-night-desktop" hidden>
+        <li>Продержись до 6 утра</li>
+        <li>Мышь к краю экрана — повернуть голову</li>
+        <li>Q / E — левая / правая дверь</li>
+        <li>A / D — свет у левой / правой двери</li>
+        <li>W — заслонка вентиляции</li>
+        <li>Пробел — монитор камер</li>
+      </ul>
+      <ul class="for-touch" id="start-night-touch" hidden>
+        <li>Продержись до 6 утра</li>
+        <li>Свайп — повернуть голову</li>
+        <li>Кнопки по краям — двери и свет</li>
+        <li>«Вент» — заслонка вентиляции</li>
+        <li>«Монитор» — камеры</li>
       </ul>
     </div>
     <div id="inventory" hidden>
@@ -210,6 +258,16 @@
       <p class="hint">Нажми на предмет, чтобы взять его в руку</p>
       <p class="hint for-desktop">I или Tab — закрыть</p>
       <p class="hint for-touch">Кнопка «Рюкзак» — закрыть</p>
+    </div>
+    <div id="night" hidden>
+      <div id="night-clock">12 AM</div>
+      <div id="night-power">100%</div>
+      <button id="nb-door-left" class="night-btn side" type="button" tabindex="-1"><span class="for-desktop">Q · </span>Дверь</button>
+      <button id="nb-light-left" class="night-btn side" type="button" tabindex="-1"><span class="for-desktop">A · </span>Свет</button>
+      <button id="nb-vent" class="night-btn side" type="button" tabindex="-1"><span class="for-desktop">W · </span>Вент</button>
+      <button id="nb-door-right" class="night-btn side" type="button" tabindex="-1"><span class="for-desktop">E · </span>Дверь</button>
+      <button id="nb-light-right" class="night-btn side" type="button" tabindex="-1"><span class="for-desktop">D · </span>Свет</button>
+      <button id="nb-monitor" class="night-btn" type="button" tabindex="-1"><span class="for-desktop">Пробел · </span>▲ Монитор ▲</button>
     </div>
     <div id="dread"></div>
     <div id="flash"></div>
