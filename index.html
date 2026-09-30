@@ -195,6 +195,37 @@
       /* Пока поднят монитор, двери и свет не нажимаются (правило ядра) — и не видны.
          Без энергии не нажимается ничего. */
       #night.monitor .side, #night.dead .night-btn { visibility: hidden; }
+      /* Планшет поверх кадра с камеры: сам кадр рисует канвас, здесь только
+         зерно, полосы, подписи и карта. Ниже HUD ночи (7). */
+      #monitor { position: fixed; inset: 0; z-index: 6; pointer-events: none;
+                 color: #f2f2f2; font: 600 18px ui-monospace, monospace; }
+      #monitor[hidden] { display: none; }
+      #monitor-grain { position: absolute; inset: 0; opacity: 0.18; mix-blend-mode: screen; }
+      #monitor-scan { position: absolute; inset: 0;
+                      background: repeating-linear-gradient(to bottom,
+                        rgba(0,0,0,0.25) 0 2px, transparent 2px 4px); }
+      #monitor-rec { position: absolute; color: #ff4a4a;
+                     left: calc(20px + env(safe-area-inset-left));
+                     top: calc(60px + env(safe-area-inset-top));
+                     animation: rec-blink 1s steps(2) infinite; }
+      @keyframes rec-blink { 50% { opacity: 0; } }
+      #monitor-cam { position: absolute; font-size: 22px;
+                     left: calc(20px + env(safe-area-inset-left));
+                     top: calc(90px + env(safe-area-inset-top)); }
+      /* Размер — MAP_WIDTH × MAP_HEIGHT из src/night/map.ts. */
+      #monitor-map { position: absolute; width: 320px; height: 230px;
+                     right: calc(16px + env(safe-area-inset-right));
+                     bottom: calc(92px + env(safe-area-inset-bottom));
+                     pointer-events: auto; background: rgba(0,0,0,0.4); border-radius: 8px; }
+      .map-room { position: absolute; box-sizing: border-box;
+                  border: 2px solid rgba(255,255,255,0.7); }
+      .map-room.office { display: flex; align-items: center; justify-content: center;
+                         font: 600 12px system-ui, sans-serif; }
+      /* Сторона — CAM_BUTTON из src/night/map.ts. */
+      .map-cam { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+                 border: 2px solid #fff; border-radius: 6px; background: rgba(40,40,40,0.9);
+                 color: #fff; font: 600 16px system-ui, sans-serif; touch-action: none; }
+      .map-cam.on { background: #3fa34d; }
       #fatal { position: fixed; inset: 0; overflow: auto; z-index: 40;
                background: #1a1013; color: #ffd7d7; padding: 32px;
                font: 15px/1.6 ui-monospace, monospace; }
@@ -258,6 +289,13 @@
       <p class="hint">Нажми на предмет, чтобы взять его в руку</p>
       <p class="hint for-desktop">I или Tab — закрыть</p>
       <p class="hint for-touch">Кнопка «Рюкзак» — закрыть</p>
+    </div>
+    <div id="monitor" hidden>
+      <div id="monitor-grain"></div>
+      <div id="monitor-scan"></div>
+      <div id="monitor-rec">● REC</div>
+      <div id="monitor-cam">CAM 1</div>
+      <div id="monitor-map"></div>
     </div>
     <div id="night" hidden>
       <div id="night-clock">12 AM</div>

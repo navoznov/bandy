@@ -8,6 +8,7 @@ import { isCoarsePointer } from '../input';
 import { buildScene } from '../render/scene';
 import { showFatal } from '../ui/fatal';
 import { createNightHud } from './hud';
+import { createMonitor } from './monitor';
 import { clampYaw, createNightInput, nightTicks, type NightAction } from './input';
 import { createNightStart } from './start';
 import { buildDoorLights, buildMonsters, buildProps, buildShutters, shutterPoints } from './scene';
@@ -49,6 +50,8 @@ export function runNight(ctx: RunContext, def: NightDef): void {
   const hud = createNightHud(act);
   const start = createNightStart(isCoarsePointer(), () => {});
   hud.show();
+  const monitor = createMonitor(level, def, (id) => night.selectCamera(id));
+  const feedCamera = new THREE.PerspectiveCamera(75, 1, 0.05, 60);
 
   // «Поверни телефон» уже есть в разметке и показывается CSS только в портрете
   // на тач-экране; здесь его лишь разрешаем, как делает тач-схема исследования.
@@ -61,6 +64,8 @@ export function runNight(ctx: RunContext, def: NightDef): void {
     renderer.setSize(width, height, false);
     officeCamera.aspect = width / height;
     officeCamera.updateProjectionMatrix();
+    feedCamera.aspect = width / height;
+    feedCamera.updateProjectionMatrix();
   }
   window.addEventListener('resize', resize);
   resize();
@@ -86,9 +91,21 @@ export function runNight(ctx: RunContext, def: NightDef): void {
 
       shutters.update(dt, (side) => night.isClosed(side));
       doorLights.update((side) => night.isLit(side));
-      monsters.update(night, 'office');
-      officeCamera.rotation.set(OFFICE_PITCH, yaw, 0);
-      renderer.render(scene, officeCamera);
+      // После поимки или победы — только офис, даже если монитор был поднят.
+      const feed = night.monitorUp && night.status === 'running';
+      monsters.update(night, feed ? 'feed' : 'office');
+      if (feed) {
+        const cam = def.cameras.find((c) => c.id === night.camera)!;
+        feedCamera.position.set(cam.at[0], NIGHT.cameraHeight, cam.at[1]);
+        feedCamera.lookAt(cam.look[0], 0.8, cam.look[1]);
+        monitor.show();
+        monitor.update(night);
+        renderer.render(scene, feedCamera);
+      } else {
+        monitor.hide();
+        officeCamera.rotation.set(OFFICE_PITCH, yaw, 0);
+        renderer.render(scene, officeCamera);
+      }
     } catch (error) {
       // Без остановки цикла браузер получит шестьдесят ошибок в секунду.
       renderer.setAnimationLoop(null);
