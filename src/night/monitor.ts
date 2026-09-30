@@ -1,5 +1,6 @@
 import type { Night } from '../core/night';
 import type { Level, NightDef } from '../core/types';
+import { isPrimaryPress } from './input';
 import { MAP_HEIGHT, MAP_WIDTH, mapLayout } from './map';
 
 export interface Monitor {
@@ -63,6 +64,7 @@ export function createMonitor(level: Level, def: NightDef, select: (id: string) 
     button.style.left = `${cam.x}px`;
     button.style.top = `${cam.y}px`;
     button.addEventListener('pointerdown', (event) => {
+      if (!isPrimaryPress(event)) return;
       event.preventDefault();
       select(cam.id);
     });

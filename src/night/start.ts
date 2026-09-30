@@ -1,3 +1,5 @@
+import { hasModifier } from './input';
+
 export interface NightStart {
   isVisible(): boolean;
 }
@@ -27,6 +29,8 @@ export function createNightStart(coarse: boolean, onStart: () => void): NightSta
 
   function begin(event: Event): void {
     if (!visible) return;
+    // Cmd+Tab и прочие сочетания браузера ночь не начинают.
+    if (event instanceof KeyboardEvent && hasModifier(event)) return;
     // Тап по «поверни телефон» — это поворот телефона, а не начало ночи.
     if (rotate && event.target instanceof Node && rotate.contains(event.target)) return;
     event.stopPropagation();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NIGHT } from '../config';
-import { clampYaw, edgePan, keyAction, nightTicks } from './input';
+import { clampYaw, edgePan, hasModifier, isPrimaryPress, keyAction, nightTicks } from './input';
 
 describe('keyAction', () => {
   it('физические клавиши', () => {
@@ -45,5 +45,28 @@ describe('nightTicks', () => {
     expect(nightTicks(false, false)).toBe(true);
     expect(nightTicks(true, false)).toBe(false);
     expect(nightTicks(false, true)).toBe(false);
+  });
+});
+
+describe('isPrimaryPress', () => {
+  it('мышь — только левая кнопка', () => {
+    expect(isPrimaryPress({ pointerType: 'mouse', button: 0 })).toBe(true);
+    expect(isPrimaryPress({ pointerType: 'mouse', button: 1 })).toBe(false);
+    expect(isPrimaryPress({ pointerType: 'mouse', button: 2 })).toBe(false);
+  });
+  it('палец и стилус — всегда', () => {
+    expect(isPrimaryPress({ pointerType: 'touch', button: 0 })).toBe(true);
+    expect(isPrimaryPress({ pointerType: 'pen', button: 0 })).toBe(true);
+  });
+});
+
+describe('hasModifier', () => {
+  it('Cmd, Ctrl и Alt — сочетание браузера, а не игры', () => {
+    expect(hasModifier({ metaKey: true, ctrlKey: false, altKey: false })).toBe(true);
+    expect(hasModifier({ metaKey: false, ctrlKey: true, altKey: false })).toBe(true);
+    expect(hasModifier({ metaKey: false, ctrlKey: false, altKey: true })).toBe(true);
+  });
+  it('без модификаторов (Shift не в счёт) — игровая клавиша', () => {
+    expect(hasModifier({ metaKey: false, ctrlKey: false, altKey: false })).toBe(false);
   });
 });

@@ -62,6 +62,11 @@ export function runNight(ctx: RunContext, def: NightDef): void {
   const hud = createNightHud(act);
   const start = createNightStart(isCoarsePointer(), () => audio.unlock());
   hud.show();
+  // Прицел режима ходьбы ночью ни к чему: белая точка висела бы поверх офиса и камер.
+  document.querySelector('#hud')?.setAttribute('hidden', '');
+  // Правая кнопка, Ctrl-клик и двупальцевый тап открыли бы системное меню,
+  // и следующий левый клик на macOS лишь закрыл бы его, не нажав кнопку двери.
+  window.addEventListener('contextmenu', (event) => event.preventDefault());
   const monitor = createMonitor(level, def, (id) => night.selectCamera(id));
   const feedCamera = new THREE.PerspectiveCamera(75, 1, 0.05, 60);
 
@@ -94,6 +99,8 @@ export function runNight(ctx: RunContext, def: NightDef): void {
     if (event.kind === 'blackout') dark.classList.add('on');
     if (event.kind === 'caught') {
       hideControls();
+      // У освещённой двери иначе стоял бы второй монстр рядом со скримером.
+      monsters.group.visible = false;
       const color = def.monsters.find((m) => m.id === event.monster)?.color ?? '#ffffff';
       jumpscare.start(color, officeCamera);
       audio.scream();
@@ -149,7 +156,7 @@ export function runNight(ctx: RunContext, def: NightDef): void {
         // Под монитором курсор едет к карте через край экрана, а палец свайпает по кадру:
         // это не поворот головы. Накопленное забираем, но в офис не переносим.
         const turn = input.takeYaw(dt);
-        if (!night.monitorUp) yaw = clampYaw(yaw + turn, level.spawn.yaw);
+        if (!night.monitorUp && !jumpscare.active()) yaw = clampYaw(yaw + turn, level.spawn.yaw);
       } else {
         input.takeYaw(dt); // накопленное за паузу не должно дёрнуть голову после неё
       }

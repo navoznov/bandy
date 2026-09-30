@@ -15,6 +15,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Обе ветки, `vertical-slice` и `antagonist`, слиты в `main` и закрыты. Работа
 ведётся от `main`.
 
+Уровень 4 (ночной режим, `src/night/`) живёт в ветке `feature/level-04`, в `main`
+не слит. Проверен глазами на десктопе; телефон и наушники не проверены.
+Открытые вопросы — в `known-issues.md` §4.
+
 ### Состояние ветки `antagonist` на момент слияния
 
 Четырнадцать задач плана исполнены, тестов 202, tsc чист, сборка проходит.

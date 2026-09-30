@@ -1,5 +1,5 @@
 import type { Night } from '../core/night';
-import type { NightAction } from './input';
+import { isPrimaryPress, type NightAction } from './input';
 
 export function clockLabel(hour: number): string {
   return `${hour === 0 ? 12 : hour} AM`;
@@ -43,6 +43,7 @@ export function createNightHud(act: (action: NightAction) => void): NightHud {
     // обзор (PR #11). preventDefault не даёт кнопке забрать фокус — иначе пробел
     // нажал бы её второй раз.
     button.addEventListener('pointerdown', (event) => {
+      if (!isPrimaryPress(event)) return;
       event.preventDefault();
       act(action);
     });

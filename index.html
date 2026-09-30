@@ -20,6 +20,7 @@
          бежать дальше или уже нечем. Ниже засветки (5) — финал съедает всё. */
       #hud { position: fixed; inset: 0; pointer-events: none; z-index: 4;
              font: 16px/1.4 system-ui, sans-serif; color: #f2f2f2; }
+      #hud[hidden] { display: none; }
       #reticle { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px;
                  margin: -3px 0 0 -3px; border-radius: 50%;
                  background: rgba(255,255,255,0.75);

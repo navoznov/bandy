@@ -16,6 +16,19 @@ export function keyAction(code: string): NightAction | null {
   return KEYS[code] ?? null;
 }
 
+/**
+ * Нажатие, которое считается «кликом» по кнопке: мышью — только левой. Правая
+ * кнопка, Ctrl-клик и двупальцевый тап открывают системное меню, а не жмут кнопку.
+ */
+export function isPrimaryPress(event: { pointerType: string; button: number }): boolean {
+  return event.pointerType !== 'mouse' || event.button === 0;
+}
+
+/** Cmd/Ctrl/Alt — сочетание браузера (Cmd+D, Cmd+A…): игре оно не принадлежит. */
+export function hasModifier(event: { metaKey: boolean; ctrlKey: boolean; altKey: boolean }): boolean {
+  return event.metaKey || event.ctrlKey || event.altKey;
+}
+
 /** Доля ширины экрана у каждого края, где курсор поворачивает голову. */
 const EDGE = 0.15;
 
@@ -73,6 +86,7 @@ export function createNightInput(canvas: HTMLCanvasElement): NightInput {
   });
 
   window.addEventListener('keydown', (event) => {
+    if (hasModifier(event)) return;
     const action = keyAction(event.code);
     if (action === null) return;
     // Пробел иначе прокрутил бы страницу или нажал бы кнопку под фокусом.
