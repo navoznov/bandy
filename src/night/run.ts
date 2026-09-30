@@ -83,7 +83,10 @@ export function runNight(ctx: RunContext, def: NightDef): void {
 
       if (nightTicks(start.isVisible(), portrait.matches)) {
         night.step(dt);
-        yaw = clampYaw(yaw + input.takeYaw(dt), level.spawn.yaw);
+        // Под монитором курсор едет к карте через край экрана, а палец свайпает по кадру:
+        // это не поворот головы. Накопленное забираем, но в офис не переносим.
+        const turn = input.takeYaw(dt);
+        if (!night.monitorUp) yaw = clampYaw(yaw + turn, level.spawn.yaw);
       } else {
         input.takeYaw(dt); // накопленное за паузу не должно дёрнуть голову после неё
       }
