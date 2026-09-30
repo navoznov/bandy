@@ -232,6 +232,16 @@
       #fatal[hidden] { display: none; }
       #fatal h1 { margin: 0 0 16px; font-size: 20px; color: #ff9a9a; }
       #fatal pre { margin: 0; white-space: pre-wrap; }
+      /* Конец энергии. Монитор в затемнении опущен ядром, поэтому делить слой
+         с ним (6) безопасно: вместе они не бывают. */
+      #night-dark { position: fixed; inset: 0; z-index: 6; background: #000;
+                    opacity: 0; pointer-events: none; transition: opacity 1.2s; }
+      #night-dark.on { opacity: 0.93; }
+      /* Ниже экранов финала (21): через 2.5 с его сменяет экран победы. */
+      #night-sixam { position: fixed; inset: 0; z-index: 20; display: flex;
+                     align-items: center; justify-content: center; background: #000;
+                     color: #f2f2f2; font: 700 72px system-ui, sans-serif; }
+      #night-sixam[hidden] { display: none; }
     </style>
   </head>
   <body>
@@ -307,6 +317,8 @@
       <button id="nb-light-right" class="night-btn side" type="button" tabindex="-1"><span class="for-desktop">D · </span>Свет</button>
       <button id="nb-monitor" class="night-btn" type="button" tabindex="-1"><span class="for-desktop">Пробел · </span>▲ Монитор ▲</button>
     </div>
+    <div id="night-dark"></div>
+    <div id="night-sixam" hidden>6 AM</div>
     <div id="dread"></div>
     <div id="flash"></div>
     <div id="win" hidden>

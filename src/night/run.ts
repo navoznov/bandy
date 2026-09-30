@@ -6,8 +6,11 @@ import { World } from '../core/world';
 import type { RunContext } from '../context';
 import { isCoarsePointer } from '../input';
 import { buildScene } from '../render/scene';
+import { nextLevelId } from '../levels';
+import { createNightAudio } from '../audio/night';
 import { showFatal } from '../ui/fatal';
 import { createNightHud } from './hud';
+import { createJumpscare } from './jumpscare';
 import { createMonitor } from './monitor';
 import { clampYaw, createNightInput, nightTicks, type NightAction } from './input';
 import { createNightStart } from './start';
@@ -35,11 +38,20 @@ export function runNight(ctx: RunContext, def: NightDef): void {
   officeCamera.position.set(level.spawn.x, PLAYER.eyeHeight, level.spawn.z);
   let yaw = level.spawn.yaw;
 
+  const nightAudio = createNightAudio();
+  // Звук не должен ронять кадр: без него игра проходима (спека §4).
+  const audio = {
+    unlock: () => { try { nightAudio.unlock(); } catch { /* звука нет */ } },
+    thunk: () => { try { nightAudio.thunk(); } catch { /* звука нет */ } },
+    scream: () => { try { nightAudio.scream(); } catch { /* звука нет */ } },
+    chime: () => { try { nightAudio.chime(); } catch { /* звука нет */ } },
+  };
+
   const act = (action: NightAction): void => {
     switch (action) {
-      case 'doorLeft': night.toggleShutter('left'); break;
-      case 'doorRight': night.toggleShutter('right'); break;
-      case 'vent': night.toggleShutter('vent'); break;
+      case 'doorLeft': if (night.toggleShutter('left')) audio.thunk(); break;
+      case 'doorRight': if (night.toggleShutter('right')) audio.thunk(); break;
+      case 'vent': if (night.toggleShutter('vent')) audio.thunk(); break;
       case 'lightLeft': night.toggleLight('left'); break;
       case 'lightRight': night.toggleLight('right'); break;
       case 'monitor': night.toggleMonitor(); break;
@@ -48,10 +60,61 @@ export function runNight(ctx: RunContext, def: NightDef): void {
   const input = createNightInput(ctx.canvas);
   input.onAction(act);
   const hud = createNightHud(act);
-  const start = createNightStart(isCoarsePointer(), () => {});
+  const start = createNightStart(isCoarsePointer(), () => audio.unlock());
   hud.show();
   const monitor = createMonitor(level, def, (id) => night.selectCamera(id));
   const feedCamera = new THREE.PerspectiveCamera(75, 1, 0.05, 60);
+
+  const jumpscare = createJumpscare(scene);
+  const dark = document.querySelector<HTMLElement>('#night-dark');
+  const sixam = document.querySelector<HTMLElement>('#night-sixam');
+  const winEl = document.querySelector<HTMLElement>('#win');
+  const caughtEl = document.querySelector<HTMLElement>('#caught');
+  if (!dark || !sixam || !winEl || !caughtEl) throw new Error('Разметка финала ночи не найдена.');
+
+  document.querySelector('#caught-again')?.addEventListener('click', () => location.reload());
+  const nextButton = document.querySelector<HTMLButtonElement>('#win-next');
+  const againEl = document.querySelector<HTMLElement>('#win-again');
+  const nextId = nextLevelId(level.id);
+  if (nextButton && nextId !== null) {
+    nextButton.addEventListener('click', () => {
+      location.hash = nextId;
+      location.reload();
+    });
+  }
+
+  function hideControls(): void {
+    hud.hide();
+    monitor.hide();
+    dark!.classList.remove('on');
+    document.querySelector('#rotate')?.setAttribute('hidden', '');
+  }
+
+  night.on((event) => {
+    if (event.kind === 'blackout') dark.classList.add('on');
+    if (event.kind === 'caught') {
+      hideControls();
+      const color = def.monsters.find((m) => m.id === event.monster)?.color ?? '#ffffff';
+      jumpscare.start(color, officeCamera);
+      audio.scream();
+    }
+    if (event.kind === 'won') {
+      hideControls();
+      audio.chime();
+      sixam.hidden = false;
+      ctx.stopLoop();
+      window.setTimeout(() => {
+        sixam.hidden = true;
+        const text = winEl.querySelector('p');
+        if (text) text.textContent = '6 AM. Ты продержался до утра.';
+        winEl.hidden = false;
+        if (nextButton && nextId !== null) {
+          nextButton.hidden = false;
+          if (againEl) againEl.hidden = true;
+        }
+      }, 2500);
+    }
+  });
 
   // «Поверни телефон» уже есть в разметке и показывается CSS только в портрете
   // на тач-экране; здесь его лишь разрешаем, как делает тач-схема исследования.
@@ -91,6 +154,13 @@ export function runNight(ctx: RunContext, def: NightDef): void {
         input.takeYaw(dt); // накопленное за паузу не должно дёрнуть голову после неё
       }
       hud.update(night);
+      if (jumpscare.active() && jumpscare.update(dt, officeCamera)) {
+        const text = caughtEl.querySelector('p');
+        if (text) text.textContent = 'Тебя поймали.';
+        caughtEl.hidden = false;
+        ctx.stopLoop();
+        return;
+      }
 
       shutters.update(dt, (side) => night.isClosed(side));
       doorLights.update((side) => night.isLit(side));
