@@ -49,8 +49,13 @@ describe('monsterPose', () => {
 });
 
 describe('visibleFromOffice', () => {
-  it('в пути виден всегда', () => {
-    expect(visibleFromOffice(def, new Night(def, () => 0.999), 'red')).toBe(true);
+  it('в пути не виден из офиса, даже при обоих светах', () => {
+    const night = new Night(def, () => 0.999);
+    expect(visibleFromOffice(def, night, 'red')).toBe(false);
+    night.toggleLight('left');
+    night.toggleLight('right');
+    expect(visibleFromOffice(def, night, 'red')).toBe(false);
+    expect(visibleFromOffice(def, night, 'grey')).toBe(false);
   });
 
   it('у двери — только при свете с её стороны', () => {
