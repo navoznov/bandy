@@ -1,9 +1,9 @@
 import { DOOR, PLAYER, ROOM } from '../config';
 import type {
   AntagonistDef, DoorDef, Effect, InteractionRule, ItemDef, ItemPlacement,
-  Level, Rect, RoomDef, RoomStyle, TriggerDef,
+  Level, NightDef, Rect, RoomDef, RoomStyle, ShutterSide, TriggerDef,
 } from './types';
-import { ROOM_STYLES } from './types';
+import { ROOM_STYLES, SHUTTER_SIDES } from './types';
 import { clampInside, INSET, roomPath } from './pathing';
 
 export function roomBounds(room: RoomDef) {
@@ -381,6 +381,181 @@ function parseAntagonist(raw: unknown, errors: string[]): AntagonistDef | undefi
   };
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isPoint(v: unknown): v is [number, number] {
+  return Array.isArray(v) && v.length === 2 && v.every(isFiniteNumber);
+}
+
+/**
+ * Блок `night`: только форма. Как и `antagonist`, разбирается до смысловых
+ * проверок: битая форма отбрасывает сущность, и ссылки на неё дали бы ложные
+ * «не существует» поверх одной настоящей ошибки.
+ */
+function parseNight(raw: unknown, errors: string[]): NightDef | undefined {
+  if (raw === undefined) return undefined;
+  if (!isRecord(raw)) {
+    errors.push('Поле "night" должно быть объектом.');
+    return undefined;
+  }
+  let valid = true;
+  const fail = (text: string): void => {
+    errors.push(`Ночь: ${text}`);
+    valid = false;
+  };
+
+  if (!isNonEmptyString(raw['office'])) fail('поле "office" должно быть непустой строкой.');
+
+  const shutters = raw['shutters'];
+  if (!isRecord(shutters) || !SHUTTER_SIDES.every((side) => isNonEmptyString(shutters[side]))) {
+    fail(`поле "shutters" должно содержать строки ${SHUTTER_SIDES.map((s) => `"${s}"`).join(', ')}.`);
+  }
+
+  const stage = raw['stage'];
+  if (stage !== undefined && !(Array.isArray(stage) && stage.length === 4 && stage.every(isFiniteNumber))) {
+    fail('поле "stage" должно быть прямоугольником [x, z, w, d].');
+  }
+
+  const cameras = raw['cameras'];
+  if (!Array.isArray(cameras) || !cameras.every((c) => isRecord(c)
+    && isNonEmptyString(c['id']) && isNonEmptyString(c['room']) && isPoint(c['at']) && isPoint(c['look']))) {
+    fail('поле "cameras" должно быть массивом { id, room, at: [x, z], look: [x, z] }.');
+  }
+
+  const monsters = raw['monsters'];
+  if (!Array.isArray(monsters)) {
+    fail('поле "monsters" должно быть массивом.');
+  } else {
+    for (const m of monsters) {
+      if (!isRecord(m) || !isNonEmptyString(m['id'])) {
+        fail('у монстра нет поля "id".');
+        continue;
+      }
+      const label = `монстр "${m['id']}"`;
+      const color = m['color'];
+      if (!isNonEmptyString(color) || !COLOR_RE.test(color)) fail(`${label}: "color" должен быть цветом вида #rrggbb.`);
+      const aggression = m['aggression'];
+      if (typeof aggression !== 'number' || !Number.isInteger(aggression) || aggression < 0 || aggression > 20) {
+        fail(`${label}: "aggression" должна быть целым числом от 0 до 20.`);
+      }
+      if (!(SHUTTER_SIDES as readonly unknown[]).includes(m['door'])) {
+        fail(`${label}: "door" должен быть одним из ${SHUTTER_SIDES.join(', ')}.`);
+      }
+      const route = m['route'];
+      if (!Array.isArray(route) || !route.every((p) => isRecord(p) && isNonEmptyString(p['room']) && isPoint(p['at']))) {
+        fail(`${label}: "route" должен быть массивом { room, at: [x, z] }.`);
+      }
+    }
+  }
+
+  if (!valid) return undefined;
+  // Форма проверена поле за полем выше; приведение только фиксирует этот факт для типов.
+  return raw as unknown as NightDef;
+}
+
+/** Правила спеки ночи §6. Сообщения — по идентификаторам: их читает автор карты. */
+function checkNight(
+  night: NightDef,
+  byId: Map<string, RoomDef>,
+  doors: DoorDef[],
+  spawn: Level['spawn'] | undefined,
+  hasAntagonist: boolean,
+  errors: string[],
+): void {
+  // Правило 8.
+  if (hasAntagonist) errors.push('Ночь: блоки "night" и "antagonist" на одном уровне несовместимы.');
+
+  // Правило 1.
+  if (!byId.has(night.office)) errors.push(`Ночь: комнаты офиса "${night.office}" не существует.`);
+  if (spawn && spawn.room !== night.office) {
+    errors.push(`Ночь: игрок появляется в комнате "${spawn.room}", а не в офисе "${night.office}".`);
+  }
+
+  // Правило 2. Заодно запоминаем комнату по ту сторону каждой заслонки — к ней
+  // привязано правило 5.
+  const beyond = new Map<ShutterSide, string>();
+  const shutterIds = new Set<string>();
+  for (const side of SHUTTER_SIDES) {
+    const id = night.shutters[side];
+    if (shutterIds.has(id)) errors.push(`Ночь: дверь "${id}" назначена заслонкой дважды.`);
+    shutterIds.add(id);
+    const door = doors.find((d) => d.id === id);
+    if (!door) {
+      errors.push(`Ночь: заслонки "${side}" — двери "${id}" — не существует.`);
+      continue;
+    }
+    const [a, b] = door.between;
+    if (a !== night.office && b !== night.office) {
+      errors.push(`Ночь: заслонка "${side}" — дверь "${id}" — не ведёт в офис "${night.office}".`);
+      continue;
+    }
+    beyond.set(side, a === night.office ? b : a);
+  }
+  for (const door of doors) {
+    if (!door.between.includes(night.office) || shutterIds.has(door.id)) continue;
+    errors.push(
+      `Ночь: у офиса есть дверь "${door.id}", которая не заслонка, — через неё монстр вошёл бы беспрепятственно.`,
+    );
+  }
+
+  // Правило 7.
+  if (night.stage) {
+    const [x, z, w, d] = night.stage;
+    const host = [...byId.values()].some((room) => contains(room, x, z) && contains(room, x + w, z + d));
+    if (!host) errors.push('Ночь: помост "stage" не лежит целиком внутри одной комнаты.');
+  }
+
+  // Правило 3.
+  if (night.cameras.length === 0) errors.push('Ночь: нет ни одной камеры — монитору нечего показывать.');
+  const cameraIds = new Set<string>();
+  for (const cam of night.cameras) {
+    if (cameraIds.has(cam.id)) errors.push(`Ночь: камера "${cam.id}" объявлена дважды.`);
+    cameraIds.add(cam.id);
+    const room = byId.get(cam.room);
+    if (!room) {
+      errors.push(`Ночь: камера "${cam.id}" висит в несуществующей комнате "${cam.room}".`);
+      continue;
+    }
+    if (!contains(room, cam.at[0], cam.at[1])) errors.push(`Ночь: камера "${cam.id}" стоит вне комнаты "${cam.room}".`);
+    if (Math.abs(cam.at[0] - cam.look[0]) < EPS && Math.abs(cam.at[1] - cam.look[1]) < EPS) {
+      errors.push(`Ночь: камера "${cam.id}" смотрит в точку, где висит сама.`);
+    }
+  }
+
+  // Правила 4 и 5. Хотя бы один монстр нужен: первый приходит при нуле энергии.
+  if (night.monsters.length === 0) errors.push('Ночь: нет ни одного монстра.');
+  const monsterIds = new Set<string>();
+  for (const m of night.monsters) {
+    if (monsterIds.has(m.id)) errors.push(`Ночь: монстр "${m.id}" объявлен дважды.`);
+    monsterIds.add(m.id);
+    if (m.route.length < 2) {
+      errors.push(`Ночь: у монстра "${m.id}" в маршруте меньше двух точек.`);
+      continue;
+    }
+    m.route.forEach((p, i) => {
+      const room = byId.get(p.room);
+      if (!room) {
+        errors.push(`Ночь: монстр "${m.id}", точка ${i + 1}: комнаты "${p.room}" не существует.`);
+      } else if (!contains(room, p.at[0], p.at[1])) {
+        errors.push(`Ночь: монстр "${m.id}", точка ${i + 1} лежит вне комнаты "${p.room}".`);
+      }
+      if (p.room === night.office) {
+        errors.push(`Ночь: монстр "${m.id}", точка ${i + 1} лежит в офисе — туда он попадает только через заслонку.`);
+      }
+    });
+    const last = m.route[m.route.length - 1]!;
+    const expected = beyond.get(m.door);
+    if (expected !== undefined && last.room !== expected) {
+      errors.push(
+        `Ночь: маршрут монстра "${m.id}" кончается в комнате "${last.room}", ` +
+        `а заслонка "${m.door}" ведёт в "${expected}".`,
+      );
+    }
+  }
+}
+
 // --- M9: уникальность идентификаторов сквозь все сущности. ----------------
 
 /**
@@ -565,6 +740,7 @@ export function validateLevel(
   const rawRules = asArray(lvl, 'interactions', errors) as Array<Record<string, unknown>>;
   const lockNames = parseLockNames(lvl['locks'], errors);
   const antagonist = parseAntagonist(lvl['antagonist'], errors);
+  const night = parseNight(lvl['night'], errors);
 
   // Дальше идут проверки смысла, а они опираются на разобранные сущности. Битая
   // форма означает, что часть сущностей отброшена, и каждая ссылка на них дала бы
@@ -729,7 +905,8 @@ export function validateLevel(
       }
     }
 
-    if (!isWinReachable(reach, triggers, doors, items, interactions)) {
+    // Ночной уровень выхода не имеет по замыслу: победа там — 6 AM, а не дверь.
+    if (!night && !isWinReachable(reach, triggers, doors, items, interactions)) {
       errors.push('Уровень непроходим: победа недостижима из точки появления.');
     }
   }
@@ -807,6 +984,8 @@ export function validateLevel(
     }
   }
 
+  if (night) checkNight(night, byId, doors, spawn, antagonist !== undefined, errors);
+
   if (errors.length > 0) return { ok: false, errors };
 
   return {
@@ -814,7 +993,7 @@ export function validateLevel(
     level: {
       id: String(lvl['id'] ?? 'level'),
       spawn: spawn!,
-      rooms, doors, items, triggers, interactions, itemDefs, locks: lockNames, antagonist,
+      rooms, doors, items, triggers, interactions, itemDefs, locks: lockNames, antagonist, night,
     },
   };
 }
