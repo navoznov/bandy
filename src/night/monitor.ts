@@ -1,7 +1,8 @@
 import type { Night } from '../core/night';
 import type { Level, NightDef } from '../core/types';
 import { isPrimaryPress } from './input';
-import { MAP_HEIGHT, MAP_WIDTH, mapLayout } from './map';
+import { NIGHT } from '../config';
+import { MAP_HEIGHT, MAP_WIDTH, mapLayout, mapScale } from './map';
 
 export interface Monitor {
   show(): void;
@@ -72,10 +73,23 @@ export function createMonitor(level: Level, def: NightDef, select: (id: string) 
     buttons.set(cam.id, button);
   }
 
+  // Карта стоит фиксированного размера, а на горизонтальном телефоне (~272 px высоты)
+  // она вылезала за верхний край. Поэтому ужимаем по высоте экрана; отступ снизу
+  // читаем из стилей, а не зашиваем: в нём safe-area, и он меняется media query.
+  // У скрытого блока (display: none) вычисленный отступ может быть не пикселями,
+  // так что считаем только на показе и на resize при показанном мониторе.
+  function fitMap(): void {
+    if (root.hidden) return;
+    const bottom = parseFloat(getComputedStyle(map).bottom);
+    const scale = mapScale(window.innerHeight, Number.isFinite(bottom) ? bottom : 0, NIGHT.mapTopReserve);
+    map.style.transform = `scale(${scale})`;
+  }
+  window.addEventListener('resize', fitMap);
+
   let shownCamera = '';
 
   return {
-    show() { root.hidden = false; },
+    show() { root.hidden = false; fitMap(); },
     hide() { root.hidden = true; },
     update(night) {
       if (night.camera !== shownCamera) {

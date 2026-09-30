@@ -7,6 +7,17 @@ export const MAP_HEIGHT = 230;
 /** Сторона квадратика камеры, CSS px. */
 export const CAM_BUTTON = 44;
 
+/**
+ * Масштаб карты по высоте экрана. Карта прижата к низу (`bottomPx` — её фактический
+ * отступ снизу, вместе с safe-area), а сверху нужен резерв под часы и энергию.
+ * В делителе карта плюс целый квадратик камеры: он выступает за прямоугольник
+ * на полкамеры сверху и снизу. Не больше 1 (на высоком экране не раздуваем) и не меньше 0.
+ */
+export function mapScale(viewportHeight: number, bottomPx: number, topReserve: number): number {
+  const available = viewportHeight - topReserve - bottomPx;
+  return Math.max(0, Math.min(1, available / (MAP_HEIGHT + CAM_BUTTON)));
+}
+
 export interface MapLayout {
   rooms: Array<{ id: string; office: boolean; x: number; y: number; w: number; h: number }>;
   cameras: Array<{ id: string; x: number; y: number }>;

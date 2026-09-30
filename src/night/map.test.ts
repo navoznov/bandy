@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadLevel } from '../levels';
-import { CAM_BUTTON, MAP_HEIGHT, MAP_WIDTH, mapLayout } from './map';
+import { CAM_BUTTON, MAP_HEIGHT, MAP_WIDTH, mapLayout, mapScale } from './map';
 
 function level04() {
   const loaded = loadLevel('level_04');
@@ -39,5 +39,25 @@ describe('mapLayout', () => {
         expect(apart, `${a.id} и ${b.id}`).toBeGreaterThanOrEqual(CAM_BUTTON);
       }
     }
+  });
+});
+
+describe('mapScale', () => {
+  it('высокий экран: масштаб 1, не больше', () => {
+    expect(mapScale(900, 92, 64)).toBe(1);
+    expect(mapScale(100000, 0, 0)).toBe(1);
+  });
+
+  it('телефон в ландшафте 272 px, отступ снизу 16: карта с квадратиками влезает', () => {
+    const s = mapScale(272, 16, 64);
+    expect(s).toBeGreaterThan(0.65);
+    expect(s).toBeLessThan(0.8);
+    // Верх карты вместе с выступающей половиной квадратика не выше резерва.
+    const top = 272 - 16 - s * (MAP_HEIGHT + CAM_BUTTON / 2);
+    expect(top).toBeGreaterThanOrEqual(64 - 1e-9);
+  });
+
+  it('не уходит в минус, если места нет вовсе', () => {
+    expect(mapScale(50, 16, 64)).toBe(0);
   });
 });

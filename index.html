@@ -217,7 +217,17 @@
       #monitor-map { position: absolute; width: 320px; height: 230px;
                      right: calc(16px + env(safe-area-inset-right));
                      bottom: calc(92px + env(safe-area-inset-bottom));
-                     pointer-events: auto; background: rgba(0,0,0,0.4); border-radius: 8px; }
+                     pointer-events: auto; background: rgba(0,0,0,0.4); border-radius: 8px;
+                     transform-origin: bottom right; /* масштаб по высоте ставит monitor.ts */ }
+      /* Низкий экран (телефон в ландшафте): карту ужимает масштаб, и над кнопкой
+         монитора квадратики камер стали бы ~24 px — мимо пальца. Поэтому карту
+         опускаем к низу, а кнопку, пока монитор поднят, уводим влево: они в одной
+         строке и не мешают друг другу. На высоком экране всё как было. */
+      @media (max-height: 420px) {
+        #monitor-map { bottom: calc(16px + env(safe-area-inset-bottom)); }
+        #night.monitor #nb-monitor { left: calc(20px + env(safe-area-inset-left));
+                                     transform: none; }
+      }
       .map-room { position: absolute; box-sizing: border-box;
                   border: 2px solid rgba(255,255,255,0.7); }
       .map-room.office { display: flex; align-items: center; justify-content: center;
