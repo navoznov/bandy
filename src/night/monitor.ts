@@ -89,7 +89,8 @@ export function createMonitor(level: Level, def: NightDef, select: (id: string) 
   let shownCamera = '';
 
   return {
-    show() { root.hidden = false; fitMap(); },
+    // run.ts зовёт show() каждый кадр, пока монитор поднят: работаем только на переходе.
+    show() { if (root.hidden) { root.hidden = false; fitMap(); } },
     hide() { root.hidden = true; },
     update(night) {
       if (night.camera !== shownCamera) {
