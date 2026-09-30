@@ -6,13 +6,15 @@ import { ANTAGONIST } from '../config';
  * (первое, что съедает fps на мобильных GPU). Лёгкое свечение — чтобы читался
  * в комнатах с light 0.4, а не растворялся в них.
  */
-export function createAntagonistMesh(): {
+export function createAntagonistMesh(
+  look: { color: string; emissive: string } = { color: '#2b2f36', emissive: '#171a1f' },
+): {
   group: THREE.Group;
   update(x: number, z: number, facing: number): void;
 } {
   const group = new THREE.Group();
   const material = new THREE.MeshStandardMaterial({
-    color: '#2b2f36', emissive: '#171a1f', emissiveIntensity: 0.6,
+    color: look.color, emissive: look.emissive, emissiveIntensity: 0.6,
   });
 
   const body = new THREE.Mesh(
