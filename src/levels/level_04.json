@@ -1,0 +1,77 @@
+{
+  "id": "level_04",
+  "spawn": { "room": "office", "x": 10.5, "z": 16.5, "yaw": 0 },
+
+  "rooms": [
+    { "id": "hall",      "rect": [4, 0, 16, 10], "color": "#5f5a66", "light": 0.45, "style": "kitchen" },
+    { "id": "backroom",  "rect": [0, 1, 4, 4],   "color": "#4f4a55", "light": 0.3,  "style": "kitchen" },
+    { "id": "west_room", "rect": [5, 10, 3, 8],  "color": "#5a5560", "light": 0.35, "style": "kitchen" },
+    { "id": "vent",      "rect": [10, 10, 1, 4], "color": "#44474d", "light": 0.15 },
+    { "id": "east_room", "rect": [13, 10, 3, 8], "color": "#5a5560", "light": 0.35, "style": "kitchen" },
+    { "id": "office",    "rect": [8, 14, 5, 4],  "color": "#655f52", "light": 0.6,  "style": "kitchen" }
+  ],
+
+  "doors": [
+    { "id": "d_backroom_hall", "between": ["backroom", "hall"],   "at": [4, 3] },
+    { "id": "d_hall_west",     "between": ["hall", "west_room"],  "at": [6.5, 10] },
+    { "id": "d_hall_vent",     "between": ["hall", "vent"],       "at": [10.5, 10] },
+    { "id": "d_hall_east",     "between": ["hall", "east_room"],  "at": [14.5, 10] },
+    { "id": "d_office_w",      "between": ["west_room", "office"], "at": [8, 16] },
+    { "id": "d_office_vent",   "between": ["vent", "office"],     "at": [10.5, 14] },
+    { "id": "d_office_e",      "between": ["office", "east_room"], "at": [13, 16] }
+  ],
+
+  "night": {
+    "office": "office",
+    "shutters": { "left": "d_office_w", "vent": "d_office_vent", "right": "d_office_e" },
+    "stage": [8, 0, 8, 3],
+
+    "cameras": [
+      { "id": "1", "room": "hall",      "at": [12, 8],      "look": [12, 1.5] },
+      { "id": "2", "room": "hall",      "at": [19.4, 9.4],  "look": [13.5, 3] },
+      { "id": "3", "room": "hall",      "at": [4.6, 9.4],   "look": [8.5, 3.5] },
+      { "id": "4", "room": "backroom",  "at": [3.6, 4.6],   "look": [1, 2] },
+      { "id": "5", "room": "vent",      "at": [10.5, 10.3], "look": [10.5, 14] },
+      { "id": "6", "room": "east_room", "at": [15.6, 10.4], "look": [14, 13.5] },
+      { "id": "7", "room": "east_room", "at": [15.6, 17.6], "look": [13.8, 15] },
+      { "id": "8", "room": "west_room", "at": [5.4, 17.6],  "look": [7.5, 14.5] },
+      { "id": "9", "room": "west_room", "at": [5.4, 10.4],  "look": [7, 13] }
+    ],
+
+    "monsters": [
+      { "id": "red", "color": "#c0302a", "aggression": 6, "door": "right",
+        "route": [
+          { "room": "hall",      "at": [10, 1.5] },
+          { "room": "hall",      "at": [11, 5.5] },
+          { "room": "east_room", "at": [14.5, 11.5] },
+          { "room": "east_room", "at": [15.2, 16.8] },
+          { "room": "east_room", "at": [13.8, 16.35] }
+        ] },
+      { "id": "orange", "color": "#d98a2b", "aggression": 6, "door": "right",
+        "route": [
+          { "room": "hall",      "at": [14, 1.5] },
+          { "room": "hall",      "at": [13.5, 5.5] },
+          { "room": "hall",      "at": [14.5, 9] },
+          { "room": "east_room", "at": [14.5, 13.5] },
+          { "room": "east_room", "at": [14.2, 17.2] },
+          { "room": "east_room", "at": [13.8, 15.65] }
+        ] },
+      { "id": "purple", "color": "#7a3fa8", "aggression": 7, "door": "left",
+        "route": [
+          { "room": "hall",      "at": [12, 1.5] },
+          { "room": "hall",      "at": [12.5, 6] },
+          { "room": "hall",      "at": [7, 6] },
+          { "room": "west_room", "at": [6.5, 11.5] },
+          { "room": "west_room", "at": [6, 15.5] },
+          { "room": "west_room", "at": [7.2, 16] }
+        ] },
+      { "id": "grey", "color": "#9a9a9e", "aggression": 5, "door": "vent",
+        "route": [
+          { "room": "backroom",  "at": [2, 3] },
+          { "room": "hall",      "at": [6, 4] },
+          { "room": "vent",      "at": [10.5, 11.5] },
+          { "room": "vent",      "at": [10.5, 13.3] }
+        ] }
+    ]
+  }
+}

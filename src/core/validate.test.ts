@@ -557,3 +557,167 @@ describe('validateLevel: структурная проверка формы JSON
     expect(result.errors.join(' ')).toContain('"rooms"');
   });
 });
+
+/**
+ * Минимальный ночной уровень: зал сверху, под ним три комнаты, офис между ними.
+ *
+ *   hall   [0,0,7,4]
+ *   west   [0,4,2,4]  vent [3,4,1,2]  east [5,4,2,4]
+ *                office [2,6,3,2]
+ */
+function nightLevel() {
+  return {
+    id: 'night_test',
+    spawn: { room: 'office', x: 3.5, z: 7, yaw: 0 },
+    rooms: [
+      { id: 'hall', rect: [0, 0, 7, 4], color: '#555555', light: 0.5 },
+      { id: 'west', rect: [0, 4, 2, 4], color: '#555555', light: 0.5 },
+      { id: 'vent', rect: [3, 4, 1, 2], color: '#555555', light: 0.5 },
+      { id: 'east', rect: [5, 4, 2, 4], color: '#555555', light: 0.5 },
+      { id: 'office', rect: [2, 6, 3, 2], color: '#555555', light: 0.5 },
+    ],
+    doors: [
+      { id: 'd_west', between: ['hall', 'west'], at: [1, 4] },
+      { id: 'd_vent', between: ['hall', 'vent'], at: [3.5, 4] },
+      { id: 'd_east', between: ['hall', 'east'], at: [6, 4] },
+      { id: 'dl', between: ['west', 'office'], at: [2, 7] },
+      { id: 'dv', between: ['vent', 'office'], at: [3.5, 6] },
+      { id: 'dr', between: ['office', 'east'], at: [5, 7] },
+    ],
+    night: {
+      office: 'office',
+      shutters: { left: 'dl', vent: 'dv', right: 'dr' } as Record<string, string>,
+      stage: [1, 0, 3, 1],
+      cameras: [{ id: '1', room: 'hall', at: [1, 1], look: [3, 3] }],
+      monsters: [{
+        id: 'red', color: '#c0302a', aggression: 6 as number, door: 'left',
+        route: [{ room: 'hall', at: [2, 2] }, { room: 'west', at: [1, 7] }],
+      }],
+    },
+  };
+}
+
+function nightErrors(mutate: (lvl: ReturnType<typeof nightLevel>) => void): string {
+  const lvl = nightLevel();
+  mutate(lvl);
+  const result = validateLevel(lvl, itemDefs);
+  return result.ok ? '' : result.errors.join('\n');
+}
+
+describe('блок night', () => {
+  it('принимает ночной уровень без выхода', () => {
+    expect(nightErrors(() => {})).toBe('');
+  });
+
+  it('тот же уровень без night отвергается как непроходимый', () => {
+    const errors = nightErrors((l) => { delete (l as Record<string, unknown>)['night']; });
+    expect(errors).toContain('непроходим');
+  });
+
+  describe('форма', () => {
+    it('night не объект', () => {
+      expect(nightErrors((l) => { (l as Record<string, unknown>)['night'] = 5; }))
+        .toContain('Поле "night" должно быть объектом');
+    });
+    it('в shutters нет vent', () => {
+      expect(nightErrors((l) => { delete l.night.shutters['vent']; })).toContain('"shutters"');
+    });
+    it('door не из left/vent/right', () => {
+      expect(nightErrors((l) => { l.night.monsters[0]!.door = 'up'; })).toContain('"door"');
+    });
+    it('aggression больше 20', () => {
+      expect(nightErrors((l) => { l.night.monsters[0]!.aggression = 21; })).toContain('"aggression"');
+    });
+    it('aggression дробная', () => {
+      expect(nightErrors((l) => { l.night.monsters[0]!.aggression = 2.5; })).toContain('"aggression"');
+    });
+    it('color не hex', () => {
+      expect(nightErrors((l) => { l.night.monsters[0]!.color = 'red'; })).toContain('"color"');
+    });
+  });
+
+  describe('правило 1: офис', () => {
+    it('офиса не существует', () => {
+      expect(nightErrors((l) => { l.night.office = 'nope'; })).toContain('офиса "nope"');
+    });
+    it('игрок появляется не в офисе', () => {
+      expect(nightErrors((l) => { l.spawn = { room: 'hall', x: 1, z: 1, yaw: 0 }; }))
+        .toContain('а не в офисе');
+    });
+  });
+
+  describe('правило 2: заслонки', () => {
+    it('двери заслонки не существует', () => {
+      expect(nightErrors((l) => { l.night.shutters['left'] = 'nope'; })).toContain('двери "nope"');
+    });
+    it('заслонка не ведёт в офис', () => {
+      expect(nightErrors((l) => { l.night.shutters['left'] = 'd_west'; })).toContain('не ведёт в офис');
+    });
+    it('одна дверь назначена двумя заслонками', () => {
+      expect(nightErrors((l) => { l.night.shutters['right'] = 'dl'; }))
+        .toContain('назначена заслонкой дважды');
+    });
+    it('у офиса есть дверь, которая не заслонка', () => {
+      const errors = nightErrors((l) => {
+        l.rooms.push({ id: 'south', rect: [2, 8, 3, 2], color: '#555555', light: 0.5 });
+        l.doors.push({ id: 'd_south', between: ['office', 'south'], at: [3.5, 8] });
+      });
+      expect(errors).toContain('"d_south", которая не заслонка');
+    });
+  });
+
+  describe('правило 3: камеры', () => {
+    it('нет ни одной камеры', () => {
+      expect(nightErrors((l) => { l.night.cameras = []; })).toContain('нет ни одной камеры');
+    });
+    it('камера объявлена дважды', () => {
+      expect(nightErrors((l) => { l.night.cameras.push({ ...l.night.cameras[0]! }); }))
+        .toContain('камера "1" объявлена дважды');
+    });
+    it('камера вне своей комнаты', () => {
+      expect(nightErrors((l) => { l.night.cameras[0]!.at = [6, 6]; })).toContain('стоит вне комнаты');
+    });
+    it('камера смотрит в свою же точку', () => {
+      expect(nightErrors((l) => { l.night.cameras[0]!.look = [1, 1]; })).toContain('смотрит в точку');
+    });
+  });
+
+  describe('правило 4: монстры', () => {
+    it('нет ни одного монстра', () => {
+      expect(nightErrors((l) => { l.night.monsters = []; })).toContain('нет ни одного монстра');
+    });
+    it('монстр объявлен дважды', () => {
+      expect(nightErrors((l) => { l.night.monsters.push({ ...l.night.monsters[0]! }); }))
+        .toContain('монстр "red" объявлен дважды');
+    });
+    it('в маршруте одна точка', () => {
+      expect(nightErrors((l) => { l.night.monsters[0]!.route.splice(0, 1); })).toContain('меньше двух');
+    });
+    it('точка вне своей комнаты', () => {
+      expect(nightErrors((l) => { l.night.monsters[0]!.route[0]!.at = [6, 6]; }))
+        .toContain('точка 1 лежит вне комнаты');
+    });
+    it('точка в офисе', () => {
+      expect(nightErrors((l) => { l.night.monsters[0]!.route[0] = { room: 'office', at: [3, 7] }; }))
+        .toContain('лежит в офисе');
+    });
+  });
+
+  it('правило 5: маршрут кончается не за своей заслонкой', () => {
+    expect(nightErrors((l) => { l.night.monsters[0]!.door = 'right'; }))
+      .toContain('кончается в комнате "west", а заслонка "right" ведёт в "east"');
+  });
+
+  it('правило 7: помост вылезает из комнаты', () => {
+    expect(nightErrors((l) => { l.night.stage = [5, 0, 4, 1]; })).toContain('помост');
+  });
+
+  it('правило 8: night и antagonist вместе', () => {
+    const errors = nightErrors((l) => {
+      (l as Record<string, unknown>)['antagonist'] = {
+        spawn: { room: 'hall', x: 2, z: 2 }, route: ['hall', 'west'], keepOpen: [],
+      };
+    });
+    expect(errors).toContain('несовместимы');
+  });
+});

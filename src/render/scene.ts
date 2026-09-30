@@ -20,7 +20,16 @@ export interface SceneBuild {
   doors: Doors;
 }
 
-export function buildScene(level: Level, world: World): SceneBuild {
+export interface SceneOptions {
+  /** false — проёмы без створок. Ночью двери никто не открывает, а закрытая створка загородила бы камеры. */
+  doorLeaves?: boolean;
+  /** Сила общего полусферического света. По умолчанию 2.6 — уровни исследования. */
+  ambient?: number;
+}
+
+const NO_DOORS: Doors = { group: new THREE.Group(), targets: [], update() {} };
+
+export function buildScene(level: Level, world: World, options: SceneOptions = {}): SceneBuild {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0d0d10);
   scene.fog = new THREE.Fog(0x0d0d10, 6, 34);
@@ -28,7 +37,7 @@ export function buildScene(level: Level, world: World): SceneBuild {
   // Полусферический свет смешивает цвет неба и цвет земли по нормали поверхности.
   // У потолка нормаль смотрит вниз, поэтому его освещает именно цвет земли —
   // если он почти чёрный, потолок гаснет, каким бы светлым ни был его материал.
-  scene.add(new THREE.HemisphereLight(0xdfe4ff, 0xb0b0b0, 2.6));
+  scene.add(new THREE.HemisphereLight(0xdfe4ff, 0xb0b0b0, options.ambient ?? 2.6));
 
   const grid = makeGridTexture();
 
@@ -72,7 +81,7 @@ export function buildScene(level: Level, world: World): SceneBuild {
 
   scene.add(buildWalls(level));
 
-  const doors = buildDoors(level, world);
+  const doors = options.doorLeaves === false ? NO_DOORS : buildDoors(level, world);
   scene.add(doors.group);
 
   const items = buildItems(level);

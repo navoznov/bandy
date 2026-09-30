@@ -20,6 +20,7 @@
          бежать дальше или уже нечем. Ниже засветки (5) — финал съедает всё. */
       #hud { position: fixed; inset: 0; pointer-events: none; z-index: 4;
              font: 16px/1.4 system-ui, sans-serif; color: #f2f2f2; }
+      #hud[hidden] { display: none; }
       #reticle { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px;
                  margin: -3px 0 0 -3px; border-radius: 50%;
                  background: rgba(255,255,255,0.75);
@@ -162,12 +163,96 @@
         .for-desktop { display: none; }
         .for-touch { display: block; }
       }
+      /* `.for-touch { display: block }` в медиазапросе перебил бы атрибут hidden:
+         авторский стиль сильнее встроенного [hidden]. Id поднимает специфичность. */
+      #start ul[hidden] { display: none; }
+      /* Ночной режим (уровень 4). Выше монитора (6): часы, энергия и кнопка
+         монитора видны и поверх камер. Ниже старта (8), финалов (21) и «поверни
+         телефон» (30). */
+      #night { position: fixed; inset: 0; z-index: 7; pointer-events: none;
+               color: #f2f2f2; font: 600 18px/1.3 system-ui, sans-serif; }
+      #night[hidden] { display: none; }
+      #night-clock { position: absolute; font-size: 26px;
+                     left: calc(20px + env(safe-area-inset-left));
+                     top: calc(16px + env(safe-area-inset-top)); }
+      #night-power { position: absolute;
+                     right: calc(20px + env(safe-area-inset-right));
+                     top: calc(16px + env(safe-area-inset-top)); }
+      .night-btn { position: fixed; pointer-events: auto; border: none;
+                   border-radius: 12px; background: rgba(255,255,255,0.18);
+                   color: #fff; font: 600 16px system-ui, sans-serif;
+                   min-width: 96px; min-height: 64px; touch-action: none;
+                   user-select: none; -webkit-user-select: none; }
+      .night-btn.on { background: rgba(255,212,121,0.55); color: #1a1a1a; }
+      #nb-door-left, #nb-light-left { left: calc(20px + env(safe-area-inset-left)); }
+      #nb-door-right, #nb-light-right { right: calc(20px + env(safe-area-inset-right)); }
+      /* 64 + 12 зазора: промах пальцем между дверью и светом — это открытая дверь. */
+      #nb-door-left, #nb-door-right { top: calc(50% - 76px); }
+      #nb-light-left, #nb-light-right { top: calc(50% + 12px); }
+      #nb-vent { left: 50%; transform: translateX(-50%);
+                 top: calc(16px + env(safe-area-inset-top)); }
+      #nb-monitor { left: 50%; transform: translateX(-50%); min-width: 220px;
+                    bottom: calc(16px + env(safe-area-inset-bottom)); }
+      /* Пока поднят монитор, двери и свет не нажимаются (правило ядра) — и не видны.
+         Без энергии не нажимается ничего. */
+      #night.monitor .side, #night.dead .night-btn { visibility: hidden; }
+      /* Планшет поверх кадра с камеры: сам кадр рисует канвас, здесь только
+         зерно, полосы, подписи и карта. Ниже HUD ночи (7). */
+      #monitor { position: fixed; inset: 0; z-index: 6; pointer-events: none;
+                 color: #f2f2f2; font: 600 18px ui-monospace, monospace; }
+      #monitor[hidden] { display: none; }
+      #monitor-grain { position: absolute; inset: 0; opacity: 0.18; mix-blend-mode: screen; }
+      #monitor-scan { position: absolute; inset: 0;
+                      background: repeating-linear-gradient(to bottom,
+                        rgba(0,0,0,0.25) 0 2px, transparent 2px 4px); }
+      #monitor-rec { position: absolute; color: #ff4a4a;
+                     left: calc(20px + env(safe-area-inset-left));
+                     top: calc(60px + env(safe-area-inset-top));
+                     animation: rec-blink 1s steps(2) infinite; }
+      @keyframes rec-blink { 50% { opacity: 0; } }
+      #monitor-cam { position: absolute; font-size: 22px;
+                     left: calc(20px + env(safe-area-inset-left));
+                     top: calc(90px + env(safe-area-inset-top)); }
+      /* Размер — MAP_WIDTH × MAP_HEIGHT из src/night/map.ts. */
+      #monitor-map { position: absolute; width: 320px; height: 230px;
+                     right: calc(16px + env(safe-area-inset-right));
+                     bottom: calc(92px + env(safe-area-inset-bottom));
+                     pointer-events: auto; background: rgba(0,0,0,0.4); border-radius: 8px;
+                     transform-origin: bottom right; /* масштаб по высоте ставит monitor.ts */ }
+      /* Низкий экран (телефон в ландшафте): карту ужимает масштаб, и над кнопкой
+         монитора квадратики камер стали бы ~24 px — мимо пальца. Поэтому карту
+         опускаем к низу, а кнопку, пока монитор поднят, уводим влево: они в одной
+         строке и не мешают друг другу. На высоком экране всё как было. */
+      @media (max-height: 420px) {
+        #monitor-map { bottom: calc(16px + env(safe-area-inset-bottom)); }
+        #night.monitor #nb-monitor { left: calc(20px + env(safe-area-inset-left));
+                                     transform: none; }
+      }
+      .map-room { position: absolute; box-sizing: border-box;
+                  border: 2px solid rgba(255,255,255,0.7); }
+      .map-room.office { display: flex; align-items: center; justify-content: center;
+                         font: 600 12px system-ui, sans-serif; }
+      /* Сторона — CAM_BUTTON из src/night/map.ts. */
+      .map-cam { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+                 border: 2px solid #fff; border-radius: 6px; background: rgba(40,40,40,0.9);
+                 color: #fff; font: 600 16px system-ui, sans-serif; touch-action: none; }
+      .map-cam.on { background: #3fa34d; }
       #fatal { position: fixed; inset: 0; overflow: auto; z-index: 40;
                background: #1a1013; color: #ffd7d7; padding: 32px;
                font: 15px/1.6 ui-monospace, monospace; }
       #fatal[hidden] { display: none; }
       #fatal h1 { margin: 0 0 16px; font-size: 20px; color: #ff9a9a; }
       #fatal pre { margin: 0; white-space: pre-wrap; }
+      /* Конец энергии. Монитор в затемнении опущен ядром, поэтому делить слой
+         с ним (6) безопасно: вместе они не бывают. */
+      #night-dark { position: fixed; inset: 0; z-index: 6; background: #000;
+                    opacity: 0; pointer-events: none; transition: opacity 1.2s; }
+      #night-dark.on { opacity: 0.93; }
+      /* Ниже экранов финала (21): через 2.5 с его сменяет экран победы. */
+      #night-sixam { position: fixed; inset: 0; z-index: 20; display: flex;
+                     align-items: center; justify-content: center; background: #000;
+                     color: #f2f2f2; font: 700 72px system-ui, sans-serif; }
+      #night-sixam[hidden] { display: none; }
     </style>
   </head>
   <body>
@@ -187,7 +272,7 @@
     <div id="start">
       <h1 id="start-title">BANDY</h1>
       <p id="start-action">Нажми, чтобы начать</p>
-      <ul class="for-desktop">
+      <ul class="for-desktop" id="start-explore-desktop">
         <li>WASD — идти</li>
         <li>Мышь — осмотреться</li>
         <li>E — действие</li>
@@ -195,12 +280,27 @@
         <li>Shift — бежать</li>
         <li>Escape — пауза</li>
       </ul>
-      <ul class="for-touch">
+      <ul class="for-touch" id="start-explore-touch">
         <li>Стик слева — идти</li>
         <li>Свайп справа — осмотреться</li>
         <li>Кнопка «Действие» — действие</li>
         <li>Кнопка «Рюкзак» — инвентарь</li>
         <li>Кнопка «Бег» — бежать</li>
+      </ul>
+      <ul class="for-desktop" id="start-night-desktop" hidden>
+        <li>Продержись до 6 утра</li>
+        <li>Мышь к краю экрана — повернуть голову</li>
+        <li>Q / E — левая / правая дверь</li>
+        <li>A / D — свет у левой / правой двери</li>
+        <li>W — заслонка вентиляции</li>
+        <li>Пробел — монитор камер</li>
+      </ul>
+      <ul class="for-touch" id="start-night-touch" hidden>
+        <li>Продержись до 6 утра</li>
+        <li>Свайп — повернуть голову</li>
+        <li>Кнопки по краям — двери и свет</li>
+        <li>«Вент» — заслонка вентиляции</li>
+        <li>«Монитор» — камеры</li>
       </ul>
     </div>
     <div id="inventory" hidden>
@@ -211,6 +311,25 @@
       <p class="hint for-desktop">I или Tab — закрыть</p>
       <p class="hint for-touch">Кнопка «Рюкзак» — закрыть</p>
     </div>
+    <div id="monitor" hidden>
+      <div id="monitor-grain"></div>
+      <div id="monitor-scan"></div>
+      <div id="monitor-rec">● REC</div>
+      <div id="monitor-cam">CAM 1</div>
+      <div id="monitor-map"></div>
+    </div>
+    <div id="night" hidden>
+      <div id="night-clock">12 AM</div>
+      <div id="night-power">100%</div>
+      <button id="nb-door-left" class="night-btn side" type="button" tabindex="-1"><span class="for-desktop">Q · </span>Дверь</button>
+      <button id="nb-light-left" class="night-btn side" type="button" tabindex="-1"><span class="for-desktop">A · </span>Свет</button>
+      <button id="nb-vent" class="night-btn side" type="button" tabindex="-1"><span class="for-desktop">W · </span>Вент</button>
+      <button id="nb-door-right" class="night-btn side" type="button" tabindex="-1"><span class="for-desktop">E · </span>Дверь</button>
+      <button id="nb-light-right" class="night-btn side" type="button" tabindex="-1"><span class="for-desktop">D · </span>Свет</button>
+      <button id="nb-monitor" class="night-btn" type="button" tabindex="-1"><span class="for-desktop">Пробел · </span>▲ Монитор ▲</button>
+    </div>
+    <div id="night-dark"></div>
+    <div id="night-sixam" hidden>6 AM</div>
     <div id="dread"></div>
     <div id="flash"></div>
     <div id="win" hidden>

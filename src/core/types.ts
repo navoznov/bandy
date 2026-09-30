@@ -86,6 +86,47 @@ export interface AntagonistDef {
   keepOpen: string[];
 }
 
+/** Проёмы офиса, которые игрок закрывает. Порядок — порядок кнопок слева направо. */
+export const SHUTTER_SIDES = ['left', 'vent', 'right'] as const;
+export type ShutterSide = typeof SHUTTER_SIDES[number];
+
+/** Точка маршрута ночного монстра. Комната названа явно: опечатку в ней валидатор ловит по имени. */
+export interface RoutePoint {
+  room: string;
+  at: readonly [number, number];
+}
+
+export interface NightCamera {
+  /** Номер на карте монитора, как на рисунке: "1".."9". */
+  id: string;
+  room: string;
+  /** Где висит под потолком. */
+  at: readonly [number, number];
+  /** Куда смотрит объектив — точка на полу. */
+  look: readonly [number, number];
+}
+
+export interface NightMonster {
+  id: string;
+  color: string;
+  /** 0..20. Шанс прыжка на каждом броске — aggression / 20, как в оригинале. */
+  aggression: number;
+  /** У какой заслонки кончается маршрут. */
+  door: ShutterSide;
+  /** Первая точка — старт, последняя — у заслонки. После заслонки — снова первая. */
+  route: RoutePoint[];
+}
+
+export interface NightDef {
+  office: string;
+  shutters: Record<ShutterSide, string>;
+  /** Низкий помост сцены. Монстр, чья точка внутри, стоит на нём. */
+  stage?: Rect;
+  cameras: NightCamera[];
+  /** Первый в списке приходит, когда кончилась энергия. */
+  monsters: NightMonster[];
+}
+
 export interface Level {
   id: string;
   spawn: Spawn;
@@ -102,6 +143,8 @@ export interface Level {
    */
   locks: Record<string, string>;
   antagonist?: AntagonistDef;
+  /** Уровень в ночном режиме: игрок сидит в офисе. Несовместим с `antagonist`. */
+  night?: NightDef;
 }
 
 export type ItemLocation =
